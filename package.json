@@ -10,7 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@sency/react-native-smkit-dev": "0.1.0",
+    "@sency/react-native-smkit": "0.1.0",
     "react": "18.2.0",
     "react-native": "0.74.2"
   },
