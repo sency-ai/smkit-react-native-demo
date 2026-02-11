@@ -1,169 +1,316 @@
-# smkit-react-native-demo
+# SMKit React Native Demo
 
-1. [ Installation ](#inst)
-2. [ Setup ](#setup)
-3. [ Configure ](#config)
-4. [ Start ](#start)
-5. [ Data ](#data)
+A modern React Native demo app showcasing real-time pose detection, exercise tracking, and form analysis using the **@sency/react-native-smkit** library (v1.0.2).
 
-<a name="inst"></a>
-## 1. Installation
-run `npm install @sency/react-native-smkit`
+## Features
 
-## 2. Setup <a name="setup"></a>
-* [iOS](https://github.com/sency-ai/smkit-react-native-demo/blob/main/docs/ios-setup.md)
+- ✅ Real-time pose detection with skeleton visualization
+- ✅ Exercise-specific form feedback and scoring
+- ✅ Rep counting for dynamic exercises
+- ✅ Live performance metrics (form score, elapsed time)
+- ✅ Support for static/dynamic exercises
+- ✅ TypeScript support
+- ✅ iOS support
 
-## 3. Configure<a name="config"></a>
+## Prerequisites
 
-```js
-  [1] First import configure
-  import { configure } from '@sency/react-native-smkit/src/index.tsx';
+- Node.js ≥ 18
+- macOS with Xcode for iOS development
+- CocoaPods
+- Valid SMKit API key from [sency.ai](https://sency.ai)
 
-  [2] then call the configure function with your auth key
-  async function configureSMKit() {
-    try {
-      const res = await configure('YOUR_AUTH_KEY');
-    } catch (e) {
-      console.error(e);
-    }
-  }
-```
-To reduce wait time we recommend to call `configure` on app launch.
+## Installation
 
-**⚠️ react-native-smkit will not work if you don't first call configure.**
-
-## 4. Start ##
-
-### Start exercise detection 
-
-First add the neccery imports
-```js
-import { configure, startSession, startDetection, stopDetection, stopSession, SMKitManagerDelegate } from '@sency/react-native-smkit/src/index.tsx';
+### 1. Install dependencies
+```bash
+yarn install
 ```
 
-Implment **SMKitManagerDelegate**
-
-```js
-  const smKitManagerDelegate: SMKitManagerDelegate = {
-    handleDetectionData,
-    handlePositionData,
-    handleSessionErrors,
-  };
-
-  // This function will be called every frame with movement data.
-  const handleDetectionData = (movementData: MovementFeedbackData) => {
-    // Handle movement data
-  };
-
-  // This function will be called every time the SDK detects JointData.
-  const handlePositionData = (position: JointData) => {
-    // Handle position data
-  };
-  
-  // This function will be called if any error occurred.
-  const handleSessionErrors = (error: string) => {
-    // Handle error
-  };
-
+### 2. iOS setup
+```bash
+cd ios
+pod install
+cd ..
 ```
 
-Now we can start the exercise.
+### 3. Configure your API key
 
-```js
-  // [1] First you will need to start the session.
-  async function startSMKitSession() {
-    try {
-      // startSession requirs 2 params shouldPresentCameraSession and the SMKitManagerDelegate
-      const res = await startSession(true, smKitManagerDelegate);
-      console.log('Session Started');
-    } catch (e) {
-      console.error(e);
-    }
-  }
-  
-  // [2] Then call startDetection to start the exercise detection.
-  async function startSMKitDetection() {
-    try {
-      const res = await startDetection("EXERCISE_NAME");
-      console.log('Detection Started');
-    } catch (e) {
-      console.error(e);
-    }
-  }
-  
-  // [3] When you are ready to stop the exercise call stopDetection.
-  async function stopSMKitDetection() {
-    try {
-      // Stops the exercise detection and returns result json.
-      const res = await stopDetection();
-      console.log('Detection Stopped ' + res);
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  // [4] When you are ready to stop the session call stopSession.
-  async function stopSMKitSession() {
-    try {
-          // Stops the session and returns result json.
-        const res = await stopSession();
-        console.log('Session Stopped');
-    } catch (e) {
-        console.error(e);
-    }
- }
+Open [App.tsx](App.tsx) and replace:
+```tsx
+const API_KEY = 'YOUR_API_KEY_HERE';
 ```
 
-## 5. Available Data Types <a name="data"></a>
+with your actual SMKit API key.
 
-#### `MovementFeedbackData`
-| Type                | Format                                                         | Description                                                                                                  |
-|---------------------|----------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
-| didFinishMovement   | `boolean`                                                      | Will be true when the user finishes a dynamic movement.                                                      |
-| isShallowRep        | `boolean`                                                      | Will be true when the user finishes a shallow dynamic movement.                                              |
-| isInPosition        | `boolean`                                                      | Will be true if the user is in the correct position.                                                         |
-| isPerfectForm       | `boolean`                                                      | Will be true if the user did not have any mistakes.                                                          |
-| techniqueScore      | `number`                                                       | The score representing the user's technique during the exercise.                                             |
-| detectionConfidence | `number`                                                       | The confidence score.                                                                                        |
-| feedback            | `string[]`                                                     | Array of feedback about the user's movement.                                                                 |
-| currentRomValue     | `number`                                                       | The current Range Of Motion of the user.                                                                     |
-| specialParams       | `{ [key: string]: number }`                                    | A dictionary with every special parameter.                                                                   |
+## Quick Start
 
-#### `JointPosition`
-| Type                | Format                                                         | Description                                                                                                  |
-|---------------------|----------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
-| x                   | `number`                                                       | The joint x position                                                                                         |
-| y                   | `number`                                                       | The joint y position                                                                                         |
+### Step 1: Configure SMKit
 
-#### `JointData`
-possible list of joints
+Call `configure()` early in your app lifecycle:
 
-| Name                |
-|---------------------|
-| Nose                |
-| Neck                |
-| RShoulder           |
-| RElbow              |
-| RWrist              |
-| LShoulder           |
-| LElbow              |
-| LWrist              |
-| RHip                |
-| RKnee               |
-| RAnkle              |
-| LHip                |
-| LKnee               |
-| LAnkle              |
-| REye                |
-| LEye                |
-| REar                |
-| LEar                |
-| Hip                 |
-| Chest               |
-| Head                |
-| LBigToe             |
-| RBigToe             |
-| LSmallToe           |
-| RSmallToe           |
-| LHeel               |
-| RHeel               |
+```tsx
+import { configure } from '@sency/react-native-smkit';
+
+useEffect(() => {
+  configure('YOUR_API_KEY').catch(err => {
+    console.error('SMKit configuration failed:', err);
+  });
+}, []);
+```
+
+**⚠️ Required:** `configure()` must be called before rendering `SmkitCameraView`.
+
+### Step 2: Add the Camera View
+
+Use the `SmkitCameraView` component to render the camera and run detection:
+
+```tsx
+import { SmkitCameraView, type SmkitCameraViewRef } from '@sency/react-native-smkit';
+import { useRef } from 'react';
+
+const MyExerciseScreen = () => {
+  const cameraRef = useRef<SmkitCameraViewRef>(null);
+
+  const handleDetectionData = (data: MovementFeedbackData) => {
+    if (data.didFinishMovement) {
+      // Rep completed
+      setRepCount(prev => prev + 1);
+    }
+    console.log('Form score:', data.techniqueScore);
+  };
+
+  return (
+    <SmkitCameraView
+      ref={cameraRef}
+      authKey="YOUR_API_KEY"
+      exercise="SquatRegular"
+      phonePosition="Floor"
+      userHeight={175}
+      onDetectionData={handleDetectionData}
+      style={{ flex: 1 }}
+    />
+  );
+};
+```
+
+### Step 3: Control Sessions
+
+```tsx
+// Start camera session
+cameraRef.current?.startSession();
+
+// Start movement detection for a specific exercise
+cameraRef.current?.startDetection('SquatRegular');
+
+// Stop detection
+cameraRef.current?.stopDetection();
+
+// Stop session
+cameraRef.current?.stopSession();
+```
+
+## API Reference
+
+### SmkitCameraView Component
+
+#### Props
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `ref` | `React.Ref<SmkitCameraViewRef>` | Yes | Ref to call imperative methods |
+| `authKey` | `string` | Yes | SMKit authentication key |
+| `exercise` | `string` | No | Exercise type to detect (e.g., `'SquatRegular'`) |
+| `phonePosition` | `'Floor' \| 'Elevated'` | No | Phone position relative to user (default: `'Floor'`) |
+| `userHeight` | `number` | No | User height in cm for form analysis |
+| `autoStart` | `boolean` | No | Auto-start session on mount (default: `false`) |
+| `onDetectionData` | `(data: MovementFeedbackData) => void` | No | Called when movement data is detected |
+| `onPositionData` | `(data: JointData) => void` | No | Called with joint position data |
+| `onDetectionStopped` | `(summary: ExerciseSummary) => void` | No | Called when detection stops with session summary |
+| `onError` | `(error: string) => void` | No | Called when errors occur |
+| `onPreviewReady` | `() => void` | No | Called when camera preview is ready |
+| `style` | `StyleProp<ViewStyle>` | No | View styling |
+
+#### Ref Methods (SmkitCameraViewRef)
+
+```tsx
+startSession(): void
+// Starts the camera session and initializes detection
+
+stopSession(): void
+// Stops the camera session and cleans up resources
+
+startDetection(exercise: string): void
+// Begins detecting the specified exercise
+
+stopDetection(): void
+// Stops detection and returns exercise summary
+```
+
+### Data Types
+
+#### MovementFeedbackData
+
+Real-time feedback for each detected movement frame:
+
+```tsx
+interface MovementFeedbackData {
+  didFinishMovement: boolean;     // Rep completed
+  isShallowRep: boolean;          // Form issue: shallow rep
+  isInPosition: boolean;          // User in correct position
+  isPerfectForm: boolean;         // Perfect form detected
+  techniqueScore: number;         // Technique score (0-100)
+  detectionConfidence: number;    // Detection confidence (0-1)
+  feedback: string[];             // User feedback messages
+  currentRomValue: number;        // Current range of motion
+  specialParams: Record<string, number>; // Exercise-specific params
+}
+```
+
+#### ExerciseSummary
+
+Summary data returned when detection stops:
+
+```tsx
+interface ExerciseSummary {
+  sessionId: string;              // Unique session ID
+  exerciseName: string;           // Exercise name
+  startTime: string;              // ISO 8601 start timestamp
+  endTime: string;                // ISO 8601 end timestamp
+  totalTime: number;              // Duration in seconds
+  techniqueScore: number;         // Average technique score (0-100)
+}
+```
+
+#### JointData
+
+Joint position data for pose tracking:
+
+```tsx
+interface JointPosition {
+  x: number;        // Normalized x coordinate (0-1)
+  y: number;        // Normalized y coordinate (0-1)
+  confidence?: number; // Confidence level
+}
+
+interface JointData {
+  [jointName: string]: JointPosition;
+}
+```
+
+**Available joints:** Nose, Neck, RShoulder, RElbow, RWrist, LShoulder, LElbow, LWrist, RHip, RKnee, RAnkle, LHip, LKnee, LAnkle, REye, LEye, REar, LEar, Hip, Chest, Head, LBigToe, RBigToe, LSmallToe, RSmallToe, LHeel, RHeel.
+
+### Supported Exercises
+
+Map user-friendly names to native SMKit exercise types:
+
+```tsx
+const EXERCISE_TYPE_MAP: Record<string, string> = {
+  'Squat': 'SquatRegular',
+  'Pushup': 'PushupRegular',
+  'JumpingJacks': 'JumpingJacks',
+  'Plank': 'PlankHighStatic',
+  'HighKnees': 'HighKnees',
+};
+
+// Pass the mapped native type to startDetection:
+cameraRef.current?.startDetection(EXERCISE_TYPE_MAP['Squat']);
+```
+
+## iOS Setup
+
+### Minimum Deployment Target
+
+Ensure your Podfile targets iOS 16 or higher:
+
+```ruby
+platform :ios, 16.0
+```
+
+If you encounter CocoaPods errors, verify your Podfile contains:
+
+```ruby
+source 'https://bitbucket.org/sencyai/ios_sdks_release.git'
+source 'https://github.com/CocoaPods/Specs.git'
+
+use_frameworks!
+
+post_install do |installer|
+  react_native_post_install(installer, :mac_catalyst_enabled => false)
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+    end
+  end
+end
+```
+
+### Camera Permissions
+
+Add camera usage description to `ios/RNSMKitDemoApp/Info.plist`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Camera access is needed to detect your exercise form and provide real-time feedback.</string>
+```
+
+## Running the App
+
+### iOS
+
+```bash
+yarn ios
+```
+
+Or open the workspace in Xcode:
+
+```bash
+open ios/RNSMKitDemoApp.xcworkspace
+```
+
+### Development Server
+
+```bash
+yarn start
+```
+
+## Project Structure
+
+```
+├── App.tsx                 # Main app component with exercise flow
+├── components/
+│   ├── CameraWindow.tsx   # Camera frame wrapper
+│   ├── SkeletonOverlay.tsx # Pose skeleton visualization
+│   └── StatsPanel.tsx     # Performance metrics display
+├── theme/
+│   └── index.ts           # Design tokens and colors
+├── ios/                   # iOS native configuration
+└── package.json           # Dependencies
+```
+
+## Troubleshooting
+
+### "SMKit not configured" error
+- Call `configure(key)` at app startup before rendering `SmkitCameraView`
+
+### Camera not showing
+- Ensure camera permissions are granted in Info.plist
+- Check that `onPreviewReady` callback fires
+- Verify the phone is properly positioned for detection
+
+### No detection data
+- Verify correct exercise type is passed to `startDetection()`
+- Check user height and phone position are correct
+- Ensure user is visible and well-lit in the camera frame
+
+### CocoaPods version conflicts
+- Run `pod repo update` to update CocoaPods specs
+- Try `pod install --repo-update`
+
+## License
+
+See LICENSE file for details.
+
+## Support
+
+For issues, feature requests, or documentation, visit [sency.ai](https://sency.ai).
