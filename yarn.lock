@@ -2614,13 +2614,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sency/react-native-smkit@npm:1.0.2":
-  version: 1.0.2
-  resolution: "@sency/react-native-smkit@npm:1.0.2"
+"@sency/react-native-smkit@npm:1.0.7":
+  version: 1.0.7
+  resolution: "@sency/react-native-smkit@npm:1.0.7"
   peerDependencies:
     react: "*"
     react-native: "*"
-  checksum: 103dd9b6254c81b97e007ae648a59efa9ee56b40c1e281a3638db18a84d90d38119a4648ba946db35369d056c55863ecc20882fd4f39b51e1a4f303eb22285ba
+  checksum: 02c15c0167dc99cc431ff12395cbf03c7c397a4b12da6799beeceeb0a1d4da047920846253c98add0bc3992884a0e9e53c9d20febb05406a4403bca620e9b2dd
   languageName: node
   linkType: hard
 
@@ -3045,7 +3045,7 @@ __metadata:
     "@react-native/eslint-config": 0.74.84
     "@react-native/metro-config": 0.74.84
     "@react-native/typescript-config": 0.74.84
-    "@sency/react-native-smkit": 1.0.2
+    "@sency/react-native-smkit": 1.0.7
     "@types/react": ^18.2.6
     "@types/react-test-renderer": ^18.0.0
     babel-jest: ^29.6.3
@@ -3054,6 +3054,7 @@ __metadata:
     prettier: 2.8.8
     react: 18.2.0
     react-native: 0.74.2
+    react-native-dotenv: ^3.4.11
     react-native-svg: 15.2.0
     react-test-renderer: 18.2.0
     typescript: 5.0.4
@@ -4277,6 +4278,13 @@ __metadata:
     domelementtype: ^2.3.0
     domhandler: ^5.0.3
   checksum: ae941d56f03d857077d55dde9297e960a625229fc2b933187cc4123084d7c2d2517f58283a7336567127029f1e008449bac8ac8506d44341e29e3bb18e02f906
+  languageName: node
+  linkType: hard
+
+"dotenv@npm:^16.4.5":
+  version: 16.6.1
+  resolution: "dotenv@npm:16.6.1"
+  checksum: e8bd63c9a37f57934f7938a9cf35de698097fadf980cb6edb61d33b3e424ceccfe4d10f37130b904a973b9038627c2646a3365a904b4406514ea94d7f1816b69
   languageName: node
   linkType: hard
 
@@ -8000,6 +8008,17 @@ __metadata:
   version: 17.0.2
   resolution: "react-is@npm:17.0.2"
   checksum: 9d6d111d8990dc98bc5402c1266a808b0459b5d54830bbea24c12d908b536df7883f268a7868cfaedde3dd9d4e0d574db456f84d2e6df9c4526f99bb4b5344d8
+  languageName: node
+  linkType: hard
+
+"react-native-dotenv@npm:^3.4.11":
+  version: 3.4.11
+  resolution: "react-native-dotenv@npm:3.4.11"
+  dependencies:
+    dotenv: ^16.4.5
+  peerDependencies:
+    "@babel/runtime": ^7.20.6
+  checksum: 3ebac2c2ed79dd7e4920fd3fc2da9187413b7190231618e4858b46c47833677838b96d531afe7bd5c4b0a60454dba40cb8708722210df5d522e30aefbf41da05
   languageName: node
   linkType: hard
 

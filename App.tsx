@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Dimensions,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -13,14 +16,18 @@ import {
 import {
   SmkitCameraView,
   configure,
+  type BodyCalibrationStatusEvent,
+  type ExerciseModifications,
   type ExerciseSummary,
   type JointData,
   type MovementFeedbackData,
+  type PhoneCalibrationUpdate,
   type SmkitCameraViewRef,
 } from '@sency/react-native-smkit';
 import CameraWindow from './components/CameraWindow';
 import SkeletonOverlay from './components/SkeletonOverlay';
 import StatsPanel from './components/StatsPanel';
+import {API_PUBLIC_KEY} from '@env';
 import { Colors, Spacing, Typography } from './theme';
 
 const API_KEY = 'YOUR_API_KEY_HERE';
@@ -43,10 +50,50 @@ const EXERCISE_TYPE_MAP: Record<ExerciseLabel, string> = {
   HighKnees: 'HighKnees',
 };
 
+function feedbackSaysPushupKneesOnFloor(data: MovementFeedbackData): boolean {
+  if (data.feedbackKeys?.includes('PushupKneesOnFloor')) {
+    return true;
+  }
+  return (data.feedback ?? []).some(
+    (t: string) => /knee/i.test(t) && /floor/i.test(t),
+  );
+}
+
+/**
+ * Sample `startSession(modifications)` — merged into native defaults. Values 0–1 normalized
+ * where applicable. Pushup: slightly less strict depth vs cpp defaults; raise `high` to loosen.
+ */
+function sampleModificationsForSelectedExercise(
+  exercise: ExerciseLabel,
+): ExerciseModifications | null {
+  const native = EXERCISE_TYPE_MAP[exercise];
+  if (native === 'SquatRegular') {
+    return {
+      SquatRegular: {
+        DepthScore: { threshold: 0.75 },
+      },
+    };
+  }
+  if (native === 'PushupRegular') {
+    return {
+      PushupRegular: {
+        PushupDepthFloor: {
+          low: 0.25,
+          high: 0.78,
+          high_soft: 0.83,
+          high_start: 0.87,
+        },
+      },
+    };
+  }
+  return null;
+}
+
 const isStaticExercise = (exerciseName: ExerciseLabel): boolean => {
   const nativeType = EXERCISE_TYPE_MAP[exerciseName] || '';
   return nativeType.includes('Static');
 };
+
 
 interface AppState {
   isConfiguring: boolean;
@@ -57,20 +104,32 @@ interface AppState {
   sessionStarted: boolean;
   nativeViewReady: boolean;
   previewReady: boolean;
+  cameraVideoSize: { width: number; height: number } | null;
   isDetecting: boolean;
   isInPosition: boolean;
   repCount: number;
+  isShallowRep: boolean;
+  lastRepSummaryLabel: string | null;
   feedback: string;
   formScore: number;
   elapsedTime: number;
   jointData: JointData | null;
   error: string | null;
+  useWideAngleCamera: boolean;
+  calibrateBeforeDetection: boolean;
+  applyExerciseModifications: boolean;
+  countOnlyPerfectPushups: boolean;
+  phoneCalibrationReady: boolean;
+  bodyInFrameForCalibration: boolean;
 }
 
 export default function App() {
   const cameraRef = useRef<SmkitCameraViewRef>(null);
-
-  const [state, setState] = useState<AppState>({
+  const repCountAnim = useRef(new Animated.Value(1)).current;
+  const previewCalibrationsStartedRef = useRef(false);
+  const directDetectionStartedRef = useRef(false);
+  const calibrationCompleteRef = useRef(false);
+const [state, setState] = useState<AppState>({
     isConfiguring: true,
     didConfig: false,
     configError: null,
@@ -79,24 +138,34 @@ export default function App() {
     sessionStarted: false,
     nativeViewReady: false,
     previewReady: false,
+    cameraVideoSize: null,
     isDetecting: false,
     isInPosition: false,
     repCount: 0,
+    isShallowRep: false,
+    lastRepSummaryLabel: null,
     feedback: '',
     formScore: 0,
     elapsedTime: 0,
     jointData: null,
     error: null,
+    useWideAngleCamera: false,
+    calibrateBeforeDetection: true,
+    applyExerciseModifications: false,
+    countOnlyPerfectPushups: false,
+    phoneCalibrationReady: false,
+    bodyInFrameForCalibration: false,
   });
 
   useEffect(() => {
     const autoConfig = async () => {
       try {
-        if (!API_KEY || API_KEY === 'YOUR_API_KEY_HERE') {
+        if (!API_KEY.trim()) {
           setState(prev => ({
             ...prev,
             isConfiguring: false,
-            configError: 'Please set your SMKit API key in App.tsx',
+            configError:
+              'Set API_PUBLIC_KEY in a root `.env` file (see `.env.example`).',
           }));
           return;
         }
@@ -130,70 +199,41 @@ export default function App() {
       }, 1000);
     }
     return () => {
-      if (interval) clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
     };
   }, [state.isDetecting]);
 
-  useEffect(() => {
-    if (!state.sessionStarted || !state.nativeViewReady) return;
-    cameraRef.current?.startSession?.();
-  }, [state.sessionStarted, state.nativeViewReady]);
-
-  const handleDetectionData = (data: MovementFeedbackData) => {
-    if (data.didFinishMovement) {
-      setState(prev => ({
-        ...prev,
-        repCount: prev.repCount + 1,
-      }));
-    }
-
-    const feedbackText = data.feedback?.[0] || '';
-
-    setState(prev => ({
-      ...prev,
-      feedback: feedbackText,
-      isInPosition: data.isInPosition,
-      formScore: Math.round(data.techniqueScore || 0),
-    }));
-  };
-
-  const handlePositionData = (data: JointData) => {
-    setState(prev => ({
-      ...prev,
-      jointData: data,
-    }));
-  };
-
-  const handleDetectionStopped = (summary: ExerciseSummary) => {
-    setState(prev => ({
-      ...prev,
-      isDetecting: false,
-    }));
-    console.log('[SMKit] Detection summary:', summary);
-  };
-
-  const handlePreviewReady = () => {
-    setState(prev => ({
-      ...prev,
-      previewReady: true,
-      error: null,
-    }));
-  };
-
-  const handleError = (errorMsg: string) => {
-    setState(prev => ({
-      ...prev,
-      error: errorMsg,
-    }));
+  const triggerRepAnimation = () => {
+    repCountAnim.setValue(1);
+    Animated.sequence([
+      Animated.timing(repCountAnim, {
+        toValue: 1.15,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(repCountAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
 
   const startSessionAndPreview = () => {
+    previewCalibrationsStartedRef.current = false;
+    directDetectionStartedRef.current = false;
+    calibrationCompleteRef.current = false;
     setState(prev => ({
       ...prev,
       error: null,
       nativeViewReady: false,
       previewReady: false,
+      cameraVideoSize: null,
       sessionStarted: true,
+      phoneCalibrationReady: false,
+      bodyInFrameForCalibration: false,
     }));
   };
 
@@ -219,15 +259,190 @@ export default function App() {
       }));
       return;
     }
-    const nativeExerciseType = EXERCISE_TYPE_MAP[state.selectedExercise];
-
     setState(prev => ({
       ...prev,
       error: null,
       isDetecting: true,
     }));
-
+    const nativeExerciseType = EXERCISE_TYPE_MAP[state.selectedExercise];
     cameraRef.current?.startDetection?.(nativeExerciseType);
+  };
+
+  useEffect(() => {
+    if (!state.sessionStarted || !state.nativeViewReady) {
+      return;
+    }
+    const mods = state.applyExerciseModifications
+      ? sampleModificationsForSelectedExercise(state.selectedExercise)
+      : null;
+    try {
+      cameraRef.current?.startSession?.(mods);
+    } catch (e) {
+      setState(prev => ({
+        ...prev,
+        error: `Failed to start session: ${String(e)}`,
+      }));
+    }
+  }, [
+    state.sessionStarted,
+    state.nativeViewReady,
+    state.applyExerciseModifications,
+    state.selectedExercise,
+  ]);
+
+  useEffect(() => {
+    if (!state.sessionStarted || !state.previewReady) {
+      return;
+    }
+    const calibrateNative =
+      Platform.OS === 'ios' && state.calibrateBeforeDetection;
+    if (calibrateNative) {
+      if (previewCalibrationsStartedRef.current) {
+        return;
+      }
+      previewCalibrationsStartedRef.current = true;
+      calibrationCompleteRef.current = false;
+      setState(prev => ({
+        ...prev,
+        phoneCalibrationReady: false,
+        bodyInFrameForCalibration: false,
+      }));
+      cameraRef.current?.startPhoneCalibration?.({
+        yzAngleRange: [70, 90],
+        xyAngleRange: [-5, 5],
+      });
+      cameraRef.current?.startBodyCalibration?.();
+      return;
+    }
+    if (directDetectionStartedRef.current || state.isDetecting) {
+      return;
+    }
+    directDetectionStartedRef.current = true;
+    startDetectionSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: run once when preview ready without calibration
+  }, [
+    state.sessionStarted,
+    state.previewReady,
+    state.calibrateBeforeDetection,
+    state.isDetecting,
+  ]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !state.calibrateBeforeDetection) {
+      return;
+    }
+    if (!state.sessionStarted || !state.previewReady) {
+      return;
+    }
+    if (!state.phoneCalibrationReady || !state.bodyInFrameForCalibration) {
+      return;
+    }
+    if (calibrationCompleteRef.current || state.isDetecting) {
+      return;
+    }
+    calibrationCompleteRef.current = true;
+    cameraRef.current?.stopPhoneCalibration?.();
+    cameraRef.current?.stopBodyCalibration?.();
+    startDetectionSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    state.calibrateBeforeDetection,
+    state.sessionStarted,
+    state.previewReady,
+    state.phoneCalibrationReady,
+    state.bodyInFrameForCalibration,
+    state.isDetecting,
+  ]);
+
+  const handleDetectionData = (data: MovementFeedbackData) => {
+    if (data.didFinishMovement) {
+      triggerRepAnimation();
+    }
+
+    const feedbackText = data.feedback?.[0] || '';
+
+    setState(prev => {
+      const next: AppState = {
+        ...prev,
+        feedback: feedbackText,
+        isInPosition: data.isInPosition,
+        isShallowRep: data.isShallowRep,
+        formScore: Math.round(data.techniqueScore || 0),
+      };
+
+      if (data.didFinishMovement) {
+        const isPushup = prev.selectedExercise === 'Pushup';
+        const perfectOnly = prev.countOnlyPerfectPushups && isPushup;
+        const kneesOnFloor = feedbackSaysPushupKneesOnFloor(data);
+        const shallow = !!data.isShallowRep;
+
+        if (perfectOnly) {
+          if (!shallow && !kneesOnFloor) {
+            next.repCount = prev.repCount + 1;
+            next.lastRepSummaryLabel = 'Last rep: counted (perfect)';
+          } else if (shallow && kneesOnFloor) {
+            next.lastRepSummaryLabel =
+              'Last rep: skipped (shallow + knees on floor)';
+          } else if (shallow) {
+            next.lastRepSummaryLabel = 'Last rep: skipped (shallow)';
+          } else {
+            next.lastRepSummaryLabel = 'Last rep: skipped (knees on floor)';
+          }
+        } else {
+          next.repCount = prev.repCount + 1;
+          next.lastRepSummaryLabel = shallow
+            ? 'Last rep: shallow'
+            : 'Last rep: full depth';
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const handlePositionData = (data: JointData) => {
+    setState(prev => ({
+      ...prev,
+      jointData: data,
+    }));
+  };
+
+  const handleDetectionStopped = (_summary: ExerciseSummary) => {
+    setState(prev => ({
+      ...prev,
+      isDetecting: false,
+    }));
+  };
+
+  const handlePreviewReady = (videoSize?: { width: number; height: number }) => {
+    setState(prev => ({
+      ...prev,
+      previewReady: true,
+      cameraVideoSize: videoSize ?? prev.cameraVideoSize,
+      error: null,
+    }));
+  };
+
+  const handleError = (errorMsg: string) => {
+    setState(prev => ({
+      ...prev,
+      error: errorMsg,
+    }));
+  };
+
+  const handlePhoneCalibrationUpdate = (e: PhoneCalibrationUpdate) => {
+    if (e.isReady) {
+      setState(prev => ({ ...prev, phoneCalibrationReady: true }));
+    }
+  };
+
+  const handleBodyCalibrationStatus = (ev: BodyCalibrationStatusEvent) => {
+    if (ev.status === 'didEnterFrame') {
+      setState(prev => ({ ...prev, bodyInFrameForCalibration: true }));
+    }
+    if (ev.status === 'didLeaveFrame') {
+      setState(prev => ({ ...prev, bodyInFrameForCalibration: false }));
+    }
   };
 
   const stopDetection = () => {
@@ -243,6 +458,8 @@ export default function App() {
     setState(prev => ({
       ...prev,
       repCount: 0,
+      isShallowRep: false,
+      lastRepSummaryLabel: null,
       feedback: '',
       formScore: 0,
       elapsedTime: 0,
@@ -251,6 +468,9 @@ export default function App() {
   };
 
   const resetToExerciseSetup = () => {
+    previewCalibrationsStartedRef.current = false;
+    directDetectionStartedRef.current = false;
+    calibrationCompleteRef.current = false;
     stopDetection();
     cameraRef.current?.stopSession?.();
     setState(prev => ({
@@ -258,7 +478,10 @@ export default function App() {
       sessionStarted: false,
       nativeViewReady: false,
       previewReady: false,
+      cameraVideoSize: null,
       repCount: 0,
+      isShallowRep: false,
+      lastRepSummaryLabel: null,
       feedback: '',
       formScore: 0,
       elapsedTime: 0,
@@ -267,6 +490,9 @@ export default function App() {
   };
 
   const resetToConfiguration = () => {
+    previewCalibrationsStartedRef.current = false;
+    directDetectionStartedRef.current = false;
+    calibrationCompleteRef.current = false;
     stopDetection();
     cameraRef.current?.stopSession?.();
     setState(prev => ({
@@ -277,6 +503,8 @@ export default function App() {
       previewReady: false,
       isDetecting: false,
       repCount: 0,
+      isShallowRep: false,
+      lastRepSummaryLabel: null,
       feedback: '',
       formScore: 0,
       elapsedTime: 0,
@@ -375,6 +603,75 @@ export default function App() {
             </View>
 
             <View style={styles.inputGroup}>
+              <Text style={styles.label}>Camera</Text>
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>Wide angle (supported devices)</Text>
+                <Switch
+                  value={state.useWideAngleCamera}
+                  onValueChange={v =>
+                    setState(prev => ({ ...prev, useWideAngleCamera: v }))
+                  }
+                />
+              </View>
+            </View>
+
+            {state.selectedExercise === 'Pushup' ? (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Pushup rep counting</Text>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>
+                    Count only perfect reps (full depth, knees off floor)
+                  </Text>
+                  <Switch
+                    value={state.countOnlyPerfectPushups}
+                    onValueChange={v =>
+                      setState(prev => ({ ...prev, countOnlyPerfectPushups: v }))
+                    }
+                  />
+                </View>
+                <Text style={styles.hint}>
+                  Uses isShallowRep and PushupKneesOnFloor (feedback_keys) on rep completion.
+                </Text>
+              </View>
+            ) : null}
+
+            {Platform.OS === 'ios' ? (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Calibration</Text>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>
+                    Phone + body calibration before detection
+                  </Text>
+                  <Switch
+                    value={state.calibrateBeforeDetection}
+                    onValueChange={v =>
+                      setState(prev => ({ ...prev, calibrateBeforeDetection: v }))
+                    }
+                  />
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Exercise config override</Text>
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>
+                  Apply sample modification (Squat: DepthScore; Pushup: depth)
+                </Text>
+                <Switch
+                  value={state.applyExerciseModifications}
+                  onValueChange={v =>
+                    setState(prev => ({ ...prev, applyExerciseModifications: v }))
+                  }
+                />
+              </View>
+              <Text style={styles.hint}>
+                Loosen pushup depth: raise normalized high in App.tsx sample (keep high_start
+                under ~0.88).
+              </Text>
+            </View>
+
+            <View style={styles.inputGroup}>
               <Text style={styles.label}>Height (cm)</Text>
               <TextInput
                 style={styles.input}
@@ -414,15 +711,18 @@ export default function App() {
         <SmkitCameraView
           ref={cameraRef}
           authKey={API_KEY}
-          exercise={EXERCISE_TYPE_MAP[state.selectedExercise]}
+          exercise={state.selectedExercise}
           phonePosition="Floor"
           userHeight={parseFloat(state.userHeight) || 175}
+          useWideAngleCamera={state.useWideAngleCamera}
           autoStart={false}
           onDetectionData={handleDetectionData}
           onPositionData={handlePositionData}
           onError={handleError}
           onPreviewReady={handlePreviewReady}
           onDetectionStopped={handleDetectionStopped}
+          onPhoneCalibrationUpdate={handlePhoneCalibrationUpdate}
+          onBodyCalibrationStatus={handleBodyCalibrationStatus}
           onLayout={handleCameraLayout}
           style={styles.cameraView}
         />
@@ -431,13 +731,42 @@ export default function App() {
           jointData={state.jointData}
           width={Dimensions.get('window').width}
           height={Dimensions.get('window').height}
+          cameraWidth={state.cameraVideoSize?.width ?? 1080}
+          cameraHeight={state.cameraVideoSize?.height ?? 1920}
           mirrored={false}
         />
 
         {state.isDetecting && !isStaticExercise(state.selectedExercise) ? (
           <View style={styles.repCounterOverlay}>
-            <Text style={styles.repCounterLabel}>REPS</Text>
-            <Text style={styles.repCounterValue}>{state.repCount}</Text>
+            <Animated.View style={{ transform: [{ scale: repCountAnim }] }}>
+              <Text style={styles.repCounterLabel}>REPS</Text>
+              <Text style={styles.repCounterValue}>{state.repCount}</Text>
+              {state.selectedExercise === 'Pushup' &&
+              state.countOnlyPerfectPushups ? (
+                <Text style={styles.repCounterPerfectHint}>perfect only</Text>
+              ) : null}
+            </Animated.View>
+          </View>
+        ) : null}
+
+        {state.isDetecting ? (
+          <View
+            style={[
+              styles.depthBanner,
+              {
+                backgroundColor: state.isShallowRep
+                  ? 'rgba(234, 179, 8, 0.92)'
+                  : 'rgba(22, 163, 74, 0.88)',
+              },
+            ]}
+          >
+            <Text style={styles.depthBannerTitle}>Rep depth</Text>
+            <Text style={styles.depthBannerLine}>
+              {state.isShallowRep ? 'Shallow (this rep)' : 'Full depth (this rep)'}
+            </Text>
+            {state.lastRepSummaryLabel != null ? (
+              <Text style={styles.depthBannerLast}>{state.lastRepSummaryLabel}</Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -454,6 +783,21 @@ export default function App() {
           >
             <Text style={styles.positionIndicatorLabel}>
               {state.isInPosition ? 'IN POSITION' : 'OUT OF POSITION'}
+            </Text>
+          </View>
+        ) : null}
+
+        {Platform.OS === 'ios' &&
+        state.calibrateBeforeDetection &&
+        state.previewReady &&
+        !state.isDetecting ? (
+          <View style={styles.calibrationOverlay}>
+            <Text style={styles.calibrationTitle}>Calibration</Text>
+            <Text style={styles.calibrationLine}>
+              Phone angle: {state.phoneCalibrationReady ? 'OK' : 'Adjust tilt'}
+            </Text>
+            <Text style={styles.calibrationLine}>
+              Body in frame: {state.bodyInFrameForCalibration ? 'OK' : 'Step in view'}
             </Text>
           </View>
         ) : null}
@@ -486,13 +830,13 @@ export default function App() {
 
         <View style={styles.controlsOverlay}>
           <View style={styles.controlsContainer}>
-            {!state.isDetecting ? (
-              <Pressable style={styles.primaryButton} onPress={startDetectionSession}>
-                <Text style={styles.primaryButtonText}>Start Detection</Text>
-              </Pressable>
-            ) : (
+            {state.isDetecting ? (
               <Pressable style={styles.primaryButtonDanger} onPress={stopDetection}>
                 <Text style={styles.primaryButtonText}>Pause Detection</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={styles.primaryButton} onPress={startDetectionSession}>
+                <Text style={styles.primaryButtonText}>Start Detection</Text>
               </Pressable>
             )}
 
@@ -561,6 +905,17 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.textTertiary,
     marginTop: Spacing.xs,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  switchLabel: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+    flex: 1,
   },
   exerciseGrid: {
     flexDirection: 'row',
@@ -717,10 +1072,68 @@ const styles = StyleSheet.create({
     ...Typography.h1,
     color: Colors.primary,
     fontSize: 48,
+    fontWeight: '700',
+  },
+  repCounterPerfectHint: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  depthBanner: {
+    position: 'absolute',
+    top: 120,
+    left: 16,
+    right: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    pointerEvents: 'none',
+  },
+  depthBannerTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(0,0,0,0.55)',
+    marginBottom: 4,
+  },
+  depthBannerLine: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  depthBannerLast: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginTop: 6,
+    opacity: 0.9,
+  },
+  calibrationOverlay: {
+    position: 'absolute',
+    top: '28%',
+    left: 24,
+    right: 24,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    pointerEvents: 'none',
+  },
+  calibrationTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  calibrationLine: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 14,
+    marginBottom: 4,
   },
   positionIndicator: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 140,
     left: 20,
     right: 20,
     paddingHorizontal: 16,

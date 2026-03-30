@@ -12,27 +12,41 @@ interface SkeletonOverlayProps {
   mirrored?: boolean;
 }
 
+// Define skeleton connections (bones) - using actual SMKit Joint enum names
 const SKELETON_CONNECTIONS = [
+  // Head to neck
   ['Nose', 'Neck'],
   ['Neck', 'RShoulder'],
   ['Neck', 'LShoulder'],
+  
+  // Right arm
   ['RShoulder', 'RElbow'],
   ['RElbow', 'RWrist'],
+  
+  // Left arm
   ['LShoulder', 'LElbow'],
   ['LElbow', 'LWrist'],
+  
+  // Torso (using Hip as center)
   ['Neck', 'Hip'],
   ['Hip', 'RHip'],
   ['Hip', 'LHip'],
   ['RShoulder', 'RHip'],
   ['LShoulder', 'LHip'],
+  
+  // Right leg
   ['RHip', 'RKnee'],
   ['RKnee', 'RAnkle'],
   ['RAnkle', 'RHeel'],
   ['RHeel', 'RBigToe'],
+  
+  // Left leg
   ['LHip', 'LKnee'],
   ['LKnee', 'LAnkle'],
   ['LAnkle', 'LHeel'],
   ['LHeel', 'LBigToe'],
+  
+  // Face (optional)
   ['Nose', 'REye'],
   ['Nose', 'LEye'],
   ['REye', 'REar'],
@@ -49,32 +63,49 @@ const SkeletonOverlay: React.FC<SkeletonOverlayProps> = ({
 }) => {
   if (!jointData) return null;
 
-  const confidenceThreshold = 0.2;
+  const confidenceThreshold = 0.3;
 
+  // Calculate the actual rendered video frame size with AspectFit
+  const cameraAspect = cameraWidth / cameraHeight;
+  const screenAspect = width / height;
+
+  let videoWidth, videoHeight, offsetX, offsetY;
+
+  if (cameraAspect > screenAspect) {
+    videoWidth = width;
+    videoHeight = width / cameraAspect;
+    offsetX = 0;
+    offsetY = (height - videoHeight) / 2;
+  } else {
+    videoHeight = height;
+    videoWidth = height * cameraAspect;
+    offsetX = (width - videoWidth) / 2;
+    offsetY = 0;
+  }
+
+  // Transform coordinates from camera space to screen space
   const transformCoord = (x: number, y: number) => {
-    const isNormalized = x <= 1 && y <= 1;
-    const nx = isNormalized ? x : x / cameraWidth;
-    const ny = isNormalized ? y : y / cameraHeight;
-    const scaledX = mirrored ? (1 - nx) * width : nx * width;
-    const scaledY = ny * height;
+    const scaledX = mirrored
+      ? offsetX + ((cameraWidth - x) / cameraWidth) * videoWidth
+      : offsetX + (x / cameraWidth) * videoWidth;
+    const scaledY = offsetY + (y / cameraHeight) * videoHeight;
     return { x: scaledX, y: scaledY };
   };
 
   return (
     <View style={styles.container} pointerEvents="none">
       <Svg width={width} height={height} style={styles.svg}>
+        {/* Draw bones (lines between joints) */}
         {SKELETON_CONNECTIONS.map(([joint1, joint2], index) => {
-          const point1 = jointData[joint1 as keyof JointData] as
-            | { x: number; y: number; confidence?: number }
-            | undefined;
-          const point2 = jointData[joint2 as keyof JointData] as
-            | { x: number; y: number; confidence?: number }
-            | undefined;
+          const point1 = jointData[joint1];
+          const point2 = jointData[joint2];
 
-          const c1 = point1?.confidence ?? 1;
-          const c2 = point2?.confidence ?? 1;
-
-          if (point1 && point2 && c1 > confidenceThreshold && c2 > confidenceThreshold) {
+          if (
+            point1 &&
+            point2 &&
+            point1.confidence > confidenceThreshold &&
+            point2.confidence > confidenceThreshold
+          ) {
             const p1 = transformCoord(point1.x, point1.y);
             const p2 = transformCoord(point2.x, point2.y);
             return (
@@ -86,18 +117,17 @@ const SkeletonOverlay: React.FC<SkeletonOverlayProps> = ({
                 y2={p2.y}
                 stroke="#00ff88"
                 strokeWidth={3}
-                opacity={Math.min(c1, c2)}
+                opacity={Math.min(point1.confidence, point2.confidence)}
               />
             );
           }
           return null;
         })}
 
+        {/* Draw joints (circles) */}
         {Object.entries(jointData).map(([jointName, joint]) => {
-          const point = joint as { x: number; y: number; confidence?: number };
-          const confidence = point.confidence ?? 1;
-          if (confidence > confidenceThreshold) {
-            const p = transformCoord(point.x, point.y);
+          if (joint.confidence > confidenceThreshold) {
+            const p = transformCoord(joint.x, joint.y);
             return (
               <Circle
                 key={`joint-${jointName}`}
@@ -105,7 +135,7 @@ const SkeletonOverlay: React.FC<SkeletonOverlayProps> = ({
                 cy={p.y}
                 r={6}
                 fill="#00ff88"
-                opacity={confidence}
+                opacity={joint.confidence}
               />
             );
           }

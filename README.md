@@ -1,6 +1,6 @@
 # SMKit React Native Demo
 
-A modern React Native demo app showcasing real-time pose detection, exercise tracking, and form analysis using the **@sency/react-native-smkit** library (v1.0.2).
+A modern React Native demo app showcasing real-time pose detection, exercise tracking, and form analysis using the **@sency/react-native-smkit** library (v1.0.7).
 
 ## Features
 
@@ -32,15 +32,6 @@ cd ios
 pod install
 cd ..
 ```
-
-### 3. Configure your API key
-
-Open [App.tsx](App.tsx) and replace:
-```tsx
-const API_KEY = 'YOUR_API_KEY_HERE';
-```
-
-with your actual SMKit API key.
 
 ## Quick Start
 

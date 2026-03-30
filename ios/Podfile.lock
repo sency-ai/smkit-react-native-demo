@@ -935,7 +935,7 @@ PODS:
   - React-Mapbuffer (0.74.2):
     - glog
     - React-debug
-  - react-native-smkit (1.0.2):
+  - react-native-smkit (1.0.7):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -955,7 +955,7 @@ PODS:
     - React-utils
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
-    - SMKit (= 1.4.6)
+    - SMKit (= 1.6.0)
     - Yoga
   - React-nativeconfig (0.74.2)
   - React-NativeModulesApple (0.74.2):
@@ -1188,9 +1188,9 @@ PODS:
     - React-utils (= 0.74.2)
   - RNSVG (15.2.0):
     - React-Core
-  - SMBase (1.4.9)
-  - SMKit (1.4.6):
-    - SMBase (= 1.4.9)
+  - SMBase (1.6.0)
+  - SMKit (1.6.0):
+    - SMBase (= 1.6.0)
   - SocketRocket (0.7.0)
   - Yoga (0.0.0)
 
@@ -1407,7 +1407,7 @@ SPEC CHECKSUMS:
   React-jsitracing: d56e7d2c109265f1c5cef24cc4a9220a71c396e5
   React-logger: 70e002e04cc56ff5c12157537405d1644c050703
   React-Mapbuffer: 39d399e4d1115ba93442df1470e2ba8baef4b569
-  react-native-smkit: 3359e316144285a8a9eed9096f974fbf32e7ba8e
+  react-native-smkit: b1985a486a066c220c68e8760a4189d0a6d59a20
   React-nativeconfig: 5d452e509d6fbedc1522e21b566451fc673ac6b7
   React-NativeModulesApple: 6db09963c48d986a177ea9ebc71d3c573b43fde7
   React-perflogger: 32ed45d9cee02cf6639acae34251590dccd30994
@@ -1432,11 +1432,11 @@ SPEC CHECKSUMS:
   React-utils: 6f584e77502e42d35fb065549608677d2863413e
   ReactCommon: d8323be5e60496938f38e51b27cf20bc281ec266
   RNSVG: 0e7deccab0678200815104223aadd5ca734dd41d
-  SMBase: 08d5f5fe052b26d02f0aece183e6df3102308f1c
-  SMKit: 2020bb15e78d5ff41d1f9093a21cd9b358a028a7
+  SMBase: fdb006eea07f3401ebd881b68366183eba9c5b28
+  SMKit: 7c62b4db4cb5071e6c5de855508ccc9484c6ca85
   SocketRocket: abac6f5de4d4d62d24e11868d7a2f427e0ef940d
   Yoga: 9ad2c02dbd9811bb5a35fe23081cb0f5d5a3f9dd
 
-PODFILE CHECKSUM: 2396590068f2a7301cca92bc6b441a919260e264
+PODFILE CHECKSUM: 6532ddd0c72f2c23abcd7caaff5c24346ed62092
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.14.3
