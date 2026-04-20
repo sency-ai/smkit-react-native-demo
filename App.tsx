@@ -715,6 +715,7 @@ const [state, setState] = useState<AppState>({
           phonePosition="Floor"
           userHeight={parseFloat(state.userHeight) || 175}
           useWideAngleCamera={state.useWideAngleCamera}
+          enablePhoneMovementCountPrevention={true}
           autoStart={false}
           onDetectionData={handleDetectionData}
           onPositionData={handlePositionData}
