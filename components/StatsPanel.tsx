@@ -21,6 +21,7 @@ interface StatsCardProps {
 
 interface StatsPanelProps {
   repCount: number;
+  countLabel?: string;
   time: string;
   formScore: number;
   feedback?: string;
@@ -43,6 +44,7 @@ const StatsCard: React.FC<StatsCardProps> = ({
 
 const StatsPanel: React.FC<StatsPanelProps> = ({
   repCount,
+  countLabel = 'REPS',
   time,
   formScore,
   feedback,
@@ -57,7 +59,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
   return (
     <View style={[styles.container, style]}>
       <View style={styles.cardsRow}>
-        <StatsCard label="REPS" value={repCount} color={Colors.primary} style={styles.card} />
+        <StatsCard label={countLabel} value={repCount} color={Colors.primary} style={styles.card} />
         <StatsCard label="TIME" value={time} color={Colors.secondary} style={styles.card} />
         <StatsCard label="FORM" value={`${formScore}%`} color={getFormColor(formScore)} style={styles.card} />
       </View>

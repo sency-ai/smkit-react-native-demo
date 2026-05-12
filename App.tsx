@@ -27,10 +27,10 @@ import {
 import CameraWindow from './components/CameraWindow';
 import SkeletonOverlay from './components/SkeletonOverlay';
 import StatsPanel from './components/StatsPanel';
-import {API_PUBLIC_KEY} from '@env';
+import { API_PUBLIC_KEY } from '@env';
 import { Colors, Spacing, Typography } from './theme';
 
-const API_KEY = 'YOUR_API_KEY_HERE';
+const API_KEY = API_PUBLIC_KEY ?? '';
 
 const EXERCISES = [
   'Squat',
@@ -38,17 +38,84 @@ const EXERCISES = [
   'JumpingJacks',
   'Plank',
   'HighKnees',
+  'boxing',
 ] as const;
 
 type ExerciseLabel = (typeof EXERCISES)[number];
+type BoxingTarget = { x: number; y: number };
 
-const EXERCISE_TYPE_MAP: Record<ExerciseLabel, string> = {
+const BOXING_DURATION_SECONDS = 30;
+const BOXING_TARGET_SIZE = 68;
+const BOXING_HIT_RADIUS = BOXING_TARGET_SIZE / 2 + 18;
+
+const EXERCISE_TYPE_MAP: Record<ExerciseLabel, string | null> = {
   Squat: 'SquatRegular',
   Pushup: 'PushupRegular',
   JumpingJacks: 'JumpingJacks',
   Plank: 'PlankHighStatic',
   HighKnees: 'HighKnees',
+  boxing: null,
 };
+
+function createBoxingTarget(): BoxingTarget {
+  const { width, height } = Dimensions.get('window');
+  const radius = BOXING_TARGET_SIZE / 2;
+  const minX = radius + Spacing.lg;
+  const maxX = width - radius - Spacing.lg;
+  const minY = 130;
+  const maxY = Math.max(minY + 1, height - 230);
+
+  return {
+    x: minX + Math.random() * Math.max(1, maxX - minX),
+    y: minY + Math.random() * Math.max(1, maxY - minY),
+  };
+}
+
+function cameraPointToScreen(
+  point: { x: number; y: number },
+  cameraSize: { width: number; height: number } | null,
+): BoxingTarget {
+  const { width, height } = Dimensions.get('window');
+  const cameraWidth = cameraSize?.width ?? 1080;
+  const cameraHeight = cameraSize?.height ?? 1920;
+  const cameraAspect = cameraWidth / cameraHeight;
+  const screenAspect = width / height;
+
+  let videoWidth = width;
+  let videoHeight = height;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (cameraAspect > screenAspect) {
+    videoHeight = width / cameraAspect;
+    offsetY = (height - videoHeight) / 2;
+  } else {
+    videoWidth = height * cameraAspect;
+    offsetX = (width - videoWidth) / 2;
+  }
+
+  return {
+    x: offsetX + (point.x / cameraWidth) * videoWidth,
+    y: offsetY + (point.y / cameraHeight) * videoHeight,
+  };
+}
+
+function getWristHitTarget(
+  jointData: JointData,
+  target: BoxingTarget,
+  cameraSize: { width: number; height: number } | null,
+): boolean {
+  return ['LWrist', 'RWrist'].some(jointName => {
+    const wrist = jointData[jointName];
+    if (!wrist || wrist.confidence <= 0.3) {
+      return false;
+    }
+
+    const wristPoint = cameraPointToScreen(wrist, cameraSize);
+    const distance = Math.hypot(wristPoint.x - target.x, wristPoint.y - target.y);
+    return distance <= BOXING_HIT_RADIUS;
+  });
+}
 
 function feedbackSaysPushupKneesOnFloor(data: MovementFeedbackData): boolean {
   if (data.feedbackKeys?.includes('PushupKneesOnFloor')) {
@@ -121,6 +188,9 @@ interface AppState {
   countOnlyPerfectPushups: boolean;
   phoneCalibrationReady: boolean;
   bodyInFrameForCalibration: boolean;
+  boxingTarget: BoxingTarget | null;
+  boxingTimeLeft: number;
+  boxingActive: boolean;
 }
 
 export default function App() {
@@ -129,7 +199,8 @@ export default function App() {
   const previewCalibrationsStartedRef = useRef(false);
   const directDetectionStartedRef = useRef(false);
   const calibrationCompleteRef = useRef(false);
-const [state, setState] = useState<AppState>({
+  const boxingLastHitAtRef = useRef(0);
+  const [state, setState] = useState<AppState>({
     isConfiguring: true,
     didConfig: false,
     configError: null,
@@ -155,6 +226,9 @@ const [state, setState] = useState<AppState>({
     countOnlyPerfectPushups: false,
     phoneCalibrationReady: false,
     bodyInFrameForCalibration: false,
+    boxingTarget: null,
+    boxingTimeLeft: BOXING_DURATION_SECONDS,
+    boxingActive: false,
   });
 
   useEffect(() => {
@@ -195,6 +269,10 @@ const [state, setState] = useState<AppState>({
         setState(prev => ({
           ...prev,
           elapsedTime: prev.elapsedTime + 1,
+          boxingTimeLeft:
+            prev.boxingActive && prev.selectedExercise === 'boxing'
+              ? Math.max(0, prev.boxingTimeLeft - 1)
+              : prev.boxingTimeLeft,
         }));
       }, 1000);
     }
@@ -204,6 +282,44 @@ const [state, setState] = useState<AppState>({
       }
     };
   }, [state.isDetecting]);
+
+  useEffect(() => {
+    if (
+      state.selectedExercise !== 'boxing' ||
+      !state.boxingActive ||
+      state.boxingTimeLeft > 0
+    ) {
+      return;
+    }
+
+    setState(prev => ({
+      ...prev,
+      isDetecting: false,
+      boxingActive: false,
+      boxingTarget: null,
+      feedback: `Boxing complete: ${prev.repCount} hits`,
+    }));
+  }, [state.boxingActive, state.boxingTimeLeft, state.selectedExercise]);
+
+  useEffect(() => {
+    if (!state.boxingActive || state.selectedExercise !== 'boxing') {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setState(prev => {
+        if (!prev.boxingActive || prev.selectedExercise !== 'boxing') {
+          return prev;
+        }
+        return {
+          ...prev,
+          boxingTarget: createBoxingTarget(),
+        };
+      });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [state.boxingActive, state.selectedExercise]);
 
   const triggerRepAnimation = () => {
     repCountAnim.setValue(1);
@@ -259,13 +375,34 @@ const [state, setState] = useState<AppState>({
       }));
       return;
     }
+    if (state.selectedExercise === 'boxing') {
+      boxingLastHitAtRef.current = 0;
+      setState(prev => ({
+        ...prev,
+        error: null,
+        feedback: '',
+        formScore: 0,
+        elapsedTime: 0,
+        repCount: 0,
+        isDetecting: true,
+        boxingActive: true,
+        boxingTimeLeft: BOXING_DURATION_SECONDS,
+        boxingTarget: createBoxingTarget(),
+      }));
+      return;
+    }
+
     setState(prev => ({
       ...prev,
       error: null,
       isDetecting: true,
+      boxingActive: false,
+      boxingTarget: null,
     }));
     const nativeExerciseType = EXERCISE_TYPE_MAP[state.selectedExercise];
-    cameraRef.current?.startDetection?.(nativeExerciseType);
+    if (nativeExerciseType) {
+      cameraRef.current?.startDetection?.(nativeExerciseType);
+    }
   };
 
   useEffect(() => {
@@ -314,7 +451,11 @@ const [state, setState] = useState<AppState>({
       cameraRef.current?.startBodyCalibration?.();
       return;
     }
-    if (directDetectionStartedRef.current || state.isDetecting) {
+    if (
+      state.selectedExercise === 'boxing' ||
+      directDetectionStartedRef.current ||
+      state.isDetecting
+    ) {
       return;
     }
     directDetectionStartedRef.current = true;
@@ -401,10 +542,29 @@ const [state, setState] = useState<AppState>({
   };
 
   const handlePositionData = (data: JointData) => {
-    setState(prev => ({
-      ...prev,
-      jointData: data,
-    }));
+    setState(prev => {
+      const next: AppState = {
+        ...prev,
+        jointData: data,
+      };
+
+      if (
+        prev.boxingActive &&
+        prev.selectedExercise === 'boxing' &&
+        prev.boxingTarget &&
+        getWristHitTarget(data, prev.boxingTarget, prev.cameraVideoSize)
+      ) {
+        const now = Date.now();
+        if (now - boxingLastHitAtRef.current > 350) {
+          boxingLastHitAtRef.current = now;
+          next.repCount = prev.repCount + 1;
+          next.boxingTarget = createBoxingTarget();
+          next.feedback = 'Target hit';
+        }
+      }
+
+      return next;
+    });
   };
 
   const handleDetectionStopped = (_summary: ExerciseSummary) => {
@@ -450,6 +610,8 @@ const [state, setState] = useState<AppState>({
     setState(prev => ({
       ...prev,
       isDetecting: false,
+      boxingActive: false,
+      boxingTarget: null,
     }));
   };
 
@@ -464,6 +626,9 @@ const [state, setState] = useState<AppState>({
       formScore: 0,
       elapsedTime: 0,
       error: null,
+      boxingActive: false,
+      boxingTarget: null,
+      boxingTimeLeft: BOXING_DURATION_SECONDS,
     }));
   };
 
@@ -486,6 +651,9 @@ const [state, setState] = useState<AppState>({
       formScore: 0,
       elapsedTime: 0,
       error: null,
+      boxingActive: false,
+      boxingTarget: null,
+      boxingTimeLeft: BOXING_DURATION_SECONDS,
     }));
   };
 
@@ -509,6 +677,9 @@ const [state, setState] = useState<AppState>({
       formScore: 0,
       elapsedTime: 0,
       error: null,
+      boxingActive: false,
+      boxingTarget: null,
+      boxingTimeLeft: BOXING_DURATION_SECONDS,
     }));
   };
 
@@ -737,11 +908,32 @@ const [state, setState] = useState<AppState>({
           mirrored={false}
         />
 
-        {state.isDetecting && !isStaticExercise(state.selectedExercise) ? (
+        {state.boxingActive && state.boxingTarget ? (
+          <View
+            style={[
+              styles.boxingTarget,
+              {
+                left: state.boxingTarget.x - BOXING_TARGET_SIZE / 2,
+                top: state.boxingTarget.y - BOXING_TARGET_SIZE / 2,
+              },
+            ]}
+          />
+        ) : null}
+
+        {state.isDetecting &&
+        (!isStaticExercise(state.selectedExercise) ||
+          state.selectedExercise === 'boxing') ? (
           <View style={styles.repCounterOverlay}>
             <Animated.View style={{ transform: [{ scale: repCountAnim }] }}>
-              <Text style={styles.repCounterLabel}>REPS</Text>
+              <Text style={styles.repCounterLabel}>
+                {state.selectedExercise === 'boxing' ? 'HITS' : 'REPS'}
+              </Text>
               <Text style={styles.repCounterValue}>{state.repCount}</Text>
+              {state.selectedExercise === 'boxing' ? (
+                <Text style={styles.repCounterPerfectHint}>
+                  {state.boxingTimeLeft}s left
+                </Text>
+              ) : null}
               {state.selectedExercise === 'Pushup' &&
               state.countOnlyPerfectPushups ? (
                 <Text style={styles.repCounterPerfectHint}>perfect only</Text>
@@ -750,7 +942,7 @@ const [state, setState] = useState<AppState>({
           </View>
         ) : null}
 
-        {state.isDetecting ? (
+        {state.isDetecting && state.selectedExercise !== 'boxing' ? (
           <View
             style={[
               styles.depthBanner,
@@ -771,7 +963,16 @@ const [state, setState] = useState<AppState>({
           </View>
         ) : null}
 
-        {state.isDetecting ? (
+        {state.boxingActive ? (
+          <View style={styles.boxingHud}>
+            <Text style={styles.boxingHudLabel}>Boxing</Text>
+            <Text style={styles.boxingHudValue}>
+              {state.boxingTimeLeft}s · {state.repCount} hits
+            </Text>
+          </View>
+        ) : null}
+
+        {state.isDetecting && state.selectedExercise !== 'boxing' ? (
           <View
             style={[
               styles.positionIndicator,
@@ -815,7 +1016,12 @@ const [state, setState] = useState<AppState>({
         <View style={styles.statsPanelOverlay}>
           <StatsPanel
             repCount={state.repCount}
-            time={formatTime(state.elapsedTime)}
+            countLabel={state.selectedExercise === 'boxing' ? 'HITS' : 'REPS'}
+            time={
+              state.selectedExercise === 'boxing'
+                ? formatTime(state.boxingTimeLeft)
+                : formatTime(state.elapsedTime)
+            }
             formScore={state.formScore}
             feedback={state.feedback}
           />
@@ -837,7 +1043,11 @@ const [state, setState] = useState<AppState>({
               </Pressable>
             ) : (
               <Pressable style={styles.primaryButton} onPress={startDetectionSession}>
-                <Text style={styles.primaryButtonText}>Start Detection</Text>
+                <Text style={styles.primaryButtonText}>
+                  {state.selectedExercise === 'boxing'
+                    ? 'Start Boxing'
+                    : 'Start Detection'}
+                </Text>
               </Pressable>
             )}
 
@@ -1080,6 +1290,43 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: Colors.textSecondary,
+  },
+  boxingTarget: {
+    position: 'absolute',
+    width: BOXING_TARGET_SIZE,
+    height: BOXING_TARGET_SIZE,
+    borderRadius: BOXING_TARGET_SIZE / 2,
+    backgroundColor: '#f97316',
+    borderWidth: 4,
+    borderColor: '#fed7aa',
+    shadowColor: '#fb923c',
+    shadowOpacity: 0.7,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 12,
+    pointerEvents: 'none',
+  },
+  boxingHud: {
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.68)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    pointerEvents: 'none',
+  },
+  boxingHudLabel: {
+    ...Typography.label,
+    color: '#fed7aa',
+    marginBottom: 4,
+  },
+  boxingHudValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.textPrimary,
   },
   depthBanner: {
     position: 'absolute',

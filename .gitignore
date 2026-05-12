@@ -35,6 +35,9 @@ local.properties
 !debug.keystore
 .yarn
 
+# Secrets (same variable name as smkit-ui-flutter-demo)
+.env
+
 # node.js
 #
 node_modules/

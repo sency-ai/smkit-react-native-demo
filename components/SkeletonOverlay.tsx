@@ -69,7 +69,10 @@ const SkeletonOverlay: React.FC<SkeletonOverlayProps> = ({
   const cameraAspect = cameraWidth / cameraHeight;
   const screenAspect = width / height;
 
-  let videoWidth, videoHeight, offsetX, offsetY;
+  let videoWidth: number;
+  let videoHeight: number;
+  let offsetX: number;
+  let offsetY: number;
 
   if (cameraAspect > screenAspect) {
     videoWidth = width;
