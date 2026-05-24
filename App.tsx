@@ -244,7 +244,7 @@ export default function App() {
           return;
         }
 
-        await configure(API_KEY);
+        await configure(API_KEY, { useBundledModelsOnColdStart: true });
         setState(prev => ({
           ...prev,
           isConfiguring: false,
@@ -885,6 +885,7 @@ export default function App() {
           exercise={state.selectedExercise}
           phonePosition="Floor"
           userHeight={parseFloat(state.userHeight) || 175}
+          useBundledModelsOnColdStart={true}
           useWideAngleCamera={state.useWideAngleCamera}
           enablePhoneMovementCountPrevention={true}
           autoStart={false}
