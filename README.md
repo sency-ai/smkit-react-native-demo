@@ -1,6 +1,6 @@
 # SMKit React Native Demo
 
-A modern React Native demo app showcasing real-time pose detection, exercise tracking, and form analysis using the **@sency/react-native-smkit** library (v1.1.3).
+A modern React Native demo app showcasing real-time pose detection, exercise tracking, and form analysis using the **@sency/react-native-smkit** library (v1.1.4).
 
 ## Features
 
