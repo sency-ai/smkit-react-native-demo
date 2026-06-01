@@ -2576,13 +2576,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sency/react-native-smkit@npm:1.1.4":
-  version: 1.1.4
-  resolution: "@sency/react-native-smkit@npm:1.1.4"
+"@sency/react-native-smkit@npm:1.1.5":
+  version: 1.1.5
+  resolution: "@sency/react-native-smkit@npm:1.1.5"
   peerDependencies:
     react: "*"
     react-native: "*"
-  checksum: ba470f6fef2426847c6e219632d7353a07b4a95aeb7140d9f3a1bc4c1b39e20449f17f9c84fc3a5d703724955971c89c79537f126c168492f59755eeceb38eb2
+  checksum: 9bf35853588328bac8dfc904501fa415f731c08584cb445c3c9eebf3b083001e88127eefe08f1802cef85799cacf48c0544ae976d1f605e25d6458323a84c7ca
   languageName: node
   linkType: hard
 
@@ -3007,7 +3007,7 @@ __metadata:
     "@react-native/eslint-config": 0.74.84
     "@react-native/metro-config": 0.74.84
     "@react-native/typescript-config": 0.74.84
-    "@sency/react-native-smkit": 1.1.4
+    "@sency/react-native-smkit": 1.1.5
     "@types/react": ^18.2.6
     "@types/react-test-renderer": ^18.0.0
     babel-jest: ^29.6.3

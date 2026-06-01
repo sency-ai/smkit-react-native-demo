@@ -1,6 +1,6 @@
 # SMKit React Native Demo
 
-A modern React Native demo app showcasing real-time pose detection, exercise tracking, and form analysis using the **@sency/react-native-smkit** library (v1.1.4).
+A modern React Native demo app showcasing real-time pose detection, exercise tracking, and form analysis using the **@sency/react-native-smkit** library (v1.1.5).
 
 ## Features
 
@@ -17,6 +17,8 @@ A modern React Native demo app showcasing real-time pose detection, exercise tra
 - Node.js ≥ 18
 - macOS with Xcode for iOS development
 - CocoaPods
+- iOS 17.0+ deployment target
+- `@sency/react-native-smkit` 1.1.5 with `SMKit` 1.9.5 and `SMBase` 1.9.5
 - Valid SMKit API key from [sency.ai](https://sency.ai)
 
 ## Installation
@@ -211,10 +213,10 @@ cameraRef.current?.startDetection(EXERCISE_TYPE_MAP['Squat']);
 
 ### Minimum Deployment Target
 
-Ensure your Podfile targets iOS 16 or higher:
+Ensure your Podfile targets iOS 17 or higher:
 
 ```ruby
-platform :ios, 16.0
+platform :ios, 17.0
 ```
 
 If you encounter CocoaPods errors, verify your Podfile contains:

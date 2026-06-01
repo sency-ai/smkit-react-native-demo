@@ -1,5 +1,7 @@
 # iOS Setup
 
+This demo targets iOS 17.0+ with `@sency/react-native-smkit` 1.1.5, `SMKit` 1.9.5, and `SMBase` 1.9.5.
+
 1. Update *Podfile* in `iOS` folder:
 ```
 [1] add the source to the top of your Podfile.
@@ -21,9 +23,9 @@ target 'YOUR_TARGET' do
      target.build_configurations.each do |config|
        config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
        config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
      end
    end
-   __apply_Xcode_12_5_M1_post_install_workaround(installer)
  end
 end
 
