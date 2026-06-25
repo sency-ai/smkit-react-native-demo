@@ -1,6 +1,6 @@
 # iOS Setup
 
-This demo targets iOS 17.0+ with `@sency/react-native-smkit` 1.1.5, `SMKit` 1.9.5, and `SMBase` 1.9.5.
+This demo targets iOS 17.0+ with `@sency/react-native-smkit` 1.1.6, `SMKit` 1.9.5, and `SMBase` 1.9.5.
 
 1. Update *Podfile* in `iOS` folder:
 ```
