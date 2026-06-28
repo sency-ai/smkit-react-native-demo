@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  PermissionsAndroid,
   Platform,
   Pressable,
   SafeAreaView,
@@ -16,6 +17,7 @@ import {
 import {
   SmkitCameraView,
   configure,
+  preloadModelsInBackground,
   type BodyCalibrationStatusEvent,
   type ExerciseModifications,
   type ExerciseSummary,
@@ -31,6 +33,7 @@ import { API_PUBLIC_KEY } from '@env';
 import { Colors, Spacing, Typography } from './theme';
 
 const API_KEY = API_PUBLIC_KEY ?? '';
+const ANDROID_POSE_MODEL_CHOICE = 'AdaptiveChoice' as const;
 
 const EXERCISES = [
   'Squat',
@@ -244,7 +247,13 @@ export default function App() {
           return;
         }
 
-        await configure(API_KEY, { useBundledModelsOnColdStart: true });
+        await configure(API_KEY, {
+          useBundledModelsOnColdStart: true,
+          ...(Platform.OS === 'android'
+            ? { poseModelChoice: ANDROID_POSE_MODEL_CHOICE }
+            : {}),
+        });
+        preloadModelsInBackground();
         setState(prev => ({
           ...prev,
           isConfiguring: false,
@@ -337,7 +346,31 @@ export default function App() {
     ]).start();
   };
 
-  const startSessionAndPreview = () => {
+  const ensureAndroidCameraPermission = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') {
+      return true;
+    }
+
+    const permission = PermissionsAndroid.PERMISSIONS.CAMERA;
+    const hasPermission = await PermissionsAndroid.check(permission);
+    if (hasPermission) {
+      return true;
+    }
+
+    const result = await PermissionsAndroid.request(permission);
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  };
+
+  const startSessionAndPreview = async () => {
+    const hasCameraPermission = await ensureAndroidCameraPermission();
+    if (!hasCameraPermission) {
+      setState(prev => ({
+        ...prev,
+        error: 'Camera permission is required to start an SMKit session.',
+      }));
+      return;
+    }
+
     previewCalibrationsStartedRef.current = false;
     directDetectionStartedRef.current = false;
     calibrationCompleteRef.current = false;
@@ -773,18 +806,20 @@ export default function App() {
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Camera</Text>
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Wide angle (supported devices)</Text>
-                <Switch
-                  value={state.useWideAngleCamera}
-                  onValueChange={v =>
-                    setState(prev => ({ ...prev, useWideAngleCamera: v }))
-                  }
-                />
+            {Platform.OS === 'ios' ? (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Camera</Text>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Wide angle (supported devices)</Text>
+                  <Switch
+                    value={state.useWideAngleCamera}
+                    onValueChange={v =>
+                      setState(prev => ({ ...prev, useWideAngleCamera: v }))
+                    }
+                  />
+                </View>
               </View>
-            </View>
+            ) : null}
 
             {state.selectedExercise === 'Pushup' ? (
               <View style={styles.inputGroup}>
@@ -888,9 +923,16 @@ export default function App() {
           useBundledModelsOnColdStart={true}
           useWideAngleCamera={state.useWideAngleCamera}
           enablePhoneMovementCountPrevention={true}
+          positionDataFps={15}
+          detectionDataFps={8}
+          showNativeSkeletonOverlay={Platform.OS === 'android'}
           autoStart={false}
           onDetectionData={handleDetectionData}
-          onPositionData={handlePositionData}
+          onPositionData={
+            Platform.OS === 'android' && state.selectedExercise !== 'boxing'
+              ? undefined
+              : handlePositionData
+          }
           onError={handleError}
           onPreviewReady={handlePreviewReady}
           onDetectionStopped={handleDetectionStopped}
@@ -900,14 +942,16 @@ export default function App() {
           style={styles.cameraView}
         />
 
-        <SkeletonOverlay
-          jointData={state.jointData}
-          width={Dimensions.get('window').width}
-          height={Dimensions.get('window').height}
-          cameraWidth={state.cameraVideoSize?.width ?? 1080}
-          cameraHeight={state.cameraVideoSize?.height ?? 1920}
-          mirrored={false}
-        />
+        {Platform.OS !== 'android' ? (
+          <SkeletonOverlay
+            jointData={state.jointData}
+            width={Dimensions.get('window').width}
+            height={Dimensions.get('window').height}
+            cameraWidth={state.cameraVideoSize?.width ?? 1080}
+            cameraHeight={state.cameraVideoSize?.height ?? 1920}
+            mirrored={false}
+          />
+        ) : null}
 
         {state.boxingActive && state.boxingTarget ? (
           <View

@@ -1,309 +1,152 @@
 # SMKit React Native Demo
 
-A modern React Native demo app showcasing real-time pose detection, exercise tracking, and form analysis using the **@sency/react-native-smkit** library (v1.1.6).
+React Native demo app for `@sency/react-native-smkit` 1.2.1. It exercises the public JS API on iOS and Android: configure, camera preview, start/stop session, detection events, position events, stop summaries, and exercise config overrides.
 
 ## Features
 
-- ✅ Real-time pose detection with skeleton visualization
-- ✅ Exercise-specific form feedback and scoring
-- ✅ Rep counting for dynamic exercises
-- ✅ Live performance metrics (form score, elapsed time)
-- ✅ Support for static/dynamic exercises
-- ✅ TypeScript support
-- ✅ iOS support
+- Real-time camera preview and SMKit exercise detection
+- Rep counting, form score, feedback, and stop summaries
+- iOS skeleton overlay through JS position events
+- Android skeleton overlay through the native SMKit view path to reduce JS/UI latency
+- Sample `startSession(modifications)` overrides for Squat and Pushup
+- Android runtime camera permission flow
 
 ## Prerequisites
 
-- Node.js ≥ 18
-- macOS with Xcode for iOS development
-- CocoaPods
-- iOS 17.0+ deployment target
-- `@sency/react-native-smkit` 1.1.6 with `SMKit` 1.9.5 and `SMBase` 1.9.5
-- Valid SMKit API key from [sency.ai](https://sency.ai)
+- Node.js 18+
+- Yarn 3.6.4
+- Valid SMKit API key in `.env` as `API_PUBLIC_KEY=...`
+- iOS: macOS, Xcode, CocoaPods, iOS 17.0+ deployment target
+- Android: Android Studio/SDK, JDK 17, Android min SDK 26, Android Gradle Plugin 8.6+
+- Android SMKit Maven access through one of:
+  - local sibling `../smkit_android/repo`
+  - local Maven cache
+  - `https://artifacts.sency.ai/artifactory/release`
 
-## Installation
+## Install
 
-### 1. Install dependencies
 ```bash
 yarn install
 ```
 
-### 2. iOS setup
+For iOS:
+
 ```bash
 cd ios
 pod install
 cd ..
 ```
 
-## Quick Start
+## Run
 
-### Step 1: Configure SMKit
+Start Metro:
 
-Call `configure()` early in your app lifecycle:
-
-```tsx
-import { configure } from '@sency/react-native-smkit';
-
-useEffect(() => {
-  configure('YOUR_API_KEY').catch(err => {
-    console.error('SMKit configuration failed:', err);
-  });
-}, []);
+```bash
+yarn start --reset-cache
 ```
 
-**⚠️ Required:** `configure()` must be called before rendering `SmkitCameraView`.
+Run Android:
 
-### Step 2: Add the Camera View
-
-Use the `SmkitCameraView` component to render the camera and run detection:
-
-```tsx
-import { SmkitCameraView, type SmkitCameraViewRef } from '@sency/react-native-smkit';
-import { useRef } from 'react';
-
-const MyExerciseScreen = () => {
-  const cameraRef = useRef<SmkitCameraViewRef>(null);
-
-  const handleDetectionData = (data: MovementFeedbackData) => {
-    if (data.didFinishMovement) {
-      // Rep completed
-      setRepCount(prev => prev + 1);
-    }
-    console.log('Form score:', data.techniqueScore);
-  };
-
-  return (
-    <SmkitCameraView
-      ref={cameraRef}
-      authKey="YOUR_API_KEY"
-      exercise="SquatRegular"
-      phonePosition="Floor"
-      userHeight={175}
-      onDetectionData={handleDetectionData}
-      style={{ flex: 1 }}
-    />
-  );
-};
+```bash
+yarn android
 ```
 
-### Step 3: Control Sessions
+Or build/install from Gradle:
 
-```tsx
-// Start camera session
-cameraRef.current?.startSession();
-
-// Start movement detection for a specific exercise
-cameraRef.current?.startDetection('SquatRegular');
-
-// Stop detection
-cameraRef.current?.stopDetection();
-
-// Stop session
-cameraRef.current?.stopSession();
+```bash
+cd android
+./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## API Reference
+Run iOS:
 
-### SmkitCameraView Component
-
-#### Props
-
-| Prop | Type | Required | Description |
-|------|------|----------|-------------|
-| `ref` | `React.Ref<SmkitCameraViewRef>` | Yes | Ref to call imperative methods |
-| `authKey` | `string` | Yes | SMKit authentication key |
-| `exercise` | `string` | No | Exercise type to detect (e.g., `'SquatRegular'`) |
-| `phonePosition` | `'Floor' \| 'Elevated'` | No | Phone position relative to user (default: `'Floor'`) |
-| `userHeight` | `number` | No | User height in cm for form analysis |
-| `autoStart` | `boolean` | No | Auto-start session on mount (default: `false`) |
-| `onDetectionData` | `(data: MovementFeedbackData) => void` | No | Called when movement data is detected |
-| `onPositionData` | `(data: JointData) => void` | No | Called with joint position data |
-| `onDetectionStopped` | `(summary: ExerciseSummary) => void` | No | Called when detection stops with session summary |
-| `onError` | `(error: string) => void` | No | Called when errors occur |
-| `onPreviewReady` | `() => void` | No | Called when camera preview is ready |
-| `style` | `StyleProp<ViewStyle>` | No | View styling |
-
-#### Ref Methods (SmkitCameraViewRef)
-
-```tsx
-startSession(): void
-// Starts the camera session and initializes detection
-
-stopSession(): void
-// Stops the camera session and cleans up resources
-
-startDetection(exercise: string): void
-// Begins detecting the specified exercise
-
-stopDetection(): void
-// Stops detection and returns exercise summary
+```bash
+yarn ios
 ```
 
-### Data Types
+## Android Notes
 
-#### MovementFeedbackData
+- Camera permission is requested before mounting `SmkitCameraView`.
+- Android config passes `poseModelChoice: 'AdaptiveChoice'` so this demo follows the SDK adaptive model selection path.
+- The camera view uses `showNativeSkeletonOverlay` on Android. JS `onPositionData` is disabled for normal exercises to avoid SVG render lag and is enabled only for the boxing mini-game.
+- `positionDataFps` is capped at 15 and `detectionDataFps` at 8 for smoother JS updates.
+- Android props that are iOS-only in SDK 1.7.1 remain no-op/unsupported: wide-angle camera, camera type, 3D options, workout paused gesture region, and `recordExercise=false`.
 
-Real-time feedback for each detected movement frame:
+## iOS Notes
 
-```tsx
-interface MovementFeedbackData {
-  didFinishMovement: boolean;     // Rep completed
-  isShallowRep: boolean;          // Form issue: shallow rep
-  isInPosition: boolean;          // User in correct position
-  isPerfectForm: boolean;         // Perfect form detected
-  techniqueScore: number;         // Technique score (0-100)
-  detectionConfidence: number;    // Detection confidence (0-1)
-  feedback: string[];             // User feedback messages
-  currentRomValue: number;        // Current range of motion
-  specialParams: Record<string, number>; // Exercise-specific params
-}
-```
+The Podfile must include the Sency CocoaPods source and iOS 17.0+ target. See `docs/ios-setup.md` for the full Podfile notes.
 
-#### ExerciseSummary
-
-Summary data returned when detection stops:
-
-```tsx
-interface ExerciseSummary {
-  sessionId: string;              // Unique session ID
-  exerciseName: string;           // Exercise name
-  startTime: string;              // ISO 8601 start timestamp
-  endTime: string;                // ISO 8601 end timestamp
-  totalTime: number;              // Duration in seconds
-  techniqueScore: number;         // Average technique score (0-100)
-}
-```
-
-#### JointData
-
-Joint position data for pose tracking:
-
-```tsx
-interface JointPosition {
-  x: number;        // Normalized x coordinate (0-1)
-  y: number;        // Normalized y coordinate (0-1)
-  confidence?: number; // Confidence level
-}
-
-interface JointData {
-  [jointName: string]: JointPosition;
-}
-```
-
-**Available joints:** Nose, Neck, RShoulder, RElbow, RWrist, LShoulder, LElbow, LWrist, RHip, RKnee, RAnkle, LHip, LKnee, LAnkle, REye, LEye, REar, LEar, Hip, Chest, Head, LBigToe, RBigToe, LSmallToe, RSmallToe, LHeel, RHeel.
-
-### Supported Exercises
-
-Map user-friendly names to native SMKit exercise types:
-
-```tsx
-const EXERCISE_TYPE_MAP: Record<string, string> = {
-  'Squat': 'SquatRegular',
-  'Pushup': 'PushupRegular',
-  'JumpingJacks': 'JumpingJacks',
-  'Plank': 'PlankHighStatic',
-  'HighKnees': 'HighKnees',
-};
-
-// Pass the mapped native type to startDetection:
-cameraRef.current?.startDetection(EXERCISE_TYPE_MAP['Squat']);
-```
-
-## iOS Setup
-
-### Minimum Deployment Target
-
-Ensure your Podfile targets iOS 17 or higher:
-
-```ruby
-platform :ios, 17.0
-```
-
-If you encounter CocoaPods errors, verify your Podfile contains:
-
-```ruby
-source 'https://bitbucket.org/sencyai/ios_sdks_release.git'
-source 'https://github.com/CocoaPods/Specs.git'
-
-use_frameworks!
-
-post_install do |installer|
-  react_native_post_install(installer, :mac_catalyst_enabled => false)
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
-      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
-    end
-  end
-end
-```
-
-### Camera Permissions
-
-Add camera usage description to `ios/RNSMKitDemoApp/Info.plist`:
+`Info.plist` must include:
 
 ```xml
 <key>NSCameraUsageDescription</key>
 <string>Camera access is needed to detect your exercise form and provide real-time feedback.</string>
 ```
 
-## Running the App
+## Basic API Shape
 
-### iOS
+```tsx
+import {
+  SmkitCameraView,
+  configure,
+  preloadModelsInBackground,
+  type SmkitCameraViewRef,
+} from '@sency/react-native-smkit';
+import { Platform } from 'react-native';
 
-```bash
-yarn ios
+await configure(API_KEY, {
+  useBundledModelsOnColdStart: true,
+  poseModelChoice: Platform.OS === 'android' ? 'AdaptiveChoice' : undefined,
+});
+preloadModelsInBackground();
+
+cameraRef.current?.startSession({
+  SquatRegular: {
+    DepthScore: { threshold: 0.75 },
+  },
+});
+cameraRef.current?.startDetection('SquatRegular');
 ```
 
-Or open the workspace in Xcode:
-
-```bash
-open ios/RNSMKitDemoApp.xcworkspace
-```
-
-### Development Server
-
-```bash
-yarn start
-```
-
-## Project Structure
-
-```
-├── App.tsx                 # Main app component with exercise flow
-├── components/
-│   ├── CameraWindow.tsx   # Camera frame wrapper
-│   ├── SkeletonOverlay.tsx # Pose skeleton visualization
-│   └── StatsPanel.tsx     # Performance metrics display
-├── theme/
-│   └── index.ts           # Design tokens and colors
-├── ios/                   # iOS native configuration
-└── package.json           # Dependencies
+```tsx
+<SmkitCameraView
+  ref={cameraRef}
+  authKey={API_KEY}
+  phonePosition="Floor"
+  userHeight={175}
+  showNativeSkeletonOverlay={Platform.OS === 'android'}
+  positionDataFps={15}
+  detectionDataFps={8}
+  onPreviewReady={setPreviewReady}
+  onDetectionData={handleDetectionData}
+  onDetectionStopped={handleDetectionStopped}
+/>
 ```
 
 ## Troubleshooting
 
-### "SMKit not configured" error
-- Call `configure(key)` at app startup before rendering `SmkitCameraView`
+Metro says the script cannot load:
 
-### Camera not showing
-- Ensure camera permissions are granted in Info.plist
-- Check that `onPreviewReady` callback fires
-- Verify the phone is properly positioned for detection
+```bash
+adb reverse tcp:8081 tcp:8081
+yarn start --reset-cache
+```
 
-### No detection data
-- Verify correct exercise type is passed to `startDetection()`
-- Check user height and phone position are correct
-- Ensure user is visible and well-lit in the camera frame
+Port 8081 is already in use:
 
-### CocoaPods version conflicts
-- Run `pod repo update` to update CocoaPods specs
-- Try `pod install --repo-update`
+```bash
+lsof -i :8081
+kill <pid>
+```
 
-## License
+Android cannot resolve SMKit artifacts:
 
-See LICENSE file for details.
+- Confirm `android/build.gradle` can see `../smkit_android/repo`, or
+- Configure access to `https://artifacts.sency.ai/artifactory/release`.
 
-## Support
+Camera starts but detection feels delayed:
 
-For issues, feature requests, or documentation, visit [sency.ai](https://sency.ai).
+- Keep Android `showNativeSkeletonOverlay` enabled.
+- Avoid subscribing to `onPositionData` unless the screen needs per-joint data.
+- Use `adb logcat | grep -E "SMKit|ReactNativeJS|RNSMKitDemoApp"` to inspect native and JS logs.
