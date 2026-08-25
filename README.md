@@ -1,6 +1,6 @@
 # SMKit React Native Demo
 
-React Native demo app for `@sency/react-native-smkit` 1.2.1. It exercises the public JS API on iOS and Android: configure, camera preview, start/stop session, detection events, position events, stop summaries, and exercise config overrides.
+React Native demo app for the published `@sency/react-native-smkit` 1.2.3 package. It exercises the public JS API on iOS and Android: configure, camera preview, start/stop session, detection events, position events, stop summaries, and exercise config overrides.
 
 ## Features
 
@@ -17,7 +17,7 @@ React Native demo app for `@sency/react-native-smkit` 1.2.1. It exercises the pu
 - Yarn 3.6.4
 - Valid SMKit API key in `.env` as `API_PUBLIC_KEY=...`
 - iOS: macOS, Xcode, CocoaPods, iOS 17.0+ deployment target
-- Android: Android Studio/SDK, JDK 17, Android min SDK 26, Android Gradle Plugin 8.6+
+- Android: Android Studio/SDK, JDK 17, Android min SDK 24 (Android 7.0), Android Gradle Plugin 8.6+
 - Android SMKit Maven access through one of:
   - local sibling `../smkit_android/repo`
   - local Maven cache
@@ -29,6 +29,12 @@ React Native demo app for `@sency/react-native-smkit` 1.2.1. It exercises the pu
 yarn install
 ```
 
+The demo installs the published package directly from npm:
+
+```sh
+yarn add @sency/react-native-smkit@1.2.3
+```
+
 For iOS:
 
 ```bash
@@ -36,6 +42,9 @@ cd ios
 pod install
 cd ..
 ```
+
+The bridge podspec is pinned to `SMKit` and `SMBase` 2.3.6. Run the pod command
+after those pods are available in the configured Sency CocoaPods source.
 
 ## Run
 
@@ -71,7 +80,7 @@ yarn ios
 - Android config passes `poseModelChoice: 'AdaptiveChoice'` so this demo follows the SDK adaptive model selection path.
 - The camera view uses `showNativeSkeletonOverlay` on Android. JS `onPositionData` is disabled for normal exercises to avoid SVG render lag and is enabled only for the boxing mini-game.
 - `positionDataFps` is capped at 15 and `detectionDataFps` at 8 for smoother JS updates.
-- Android props that are iOS-only in SDK 1.7.1 remain no-op/unsupported: wide-angle camera, camera type, 3D options, workout paused gesture region, and `recordExercise=false`.
+- Android props that are iOS-only in SDK 1.8.0 remain no-op/unsupported: wide-angle camera, camera type, 3D options, workout paused gesture region, and `recordExercise=false`.
 
 ## iOS Notes
 
