@@ -1,0 +1,35 @@
+buildscript {
+    ext {
+        buildToolsVersion = "34.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 35
+        targetSdkVersion = 34
+        ndkVersion = "26.1.10909125"
+        kotlinVersion = "1.9.22"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.6.0")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        mavenLocal()
+        // Prefer local sibling artifacts when working against an unpublished/internal SDK build.
+        maven { url = uri("${rootDir}/../../smkit_android/repo") }
+        maven { url = uri("${rootDir}/../../../../smkit_android/repo") }
+        maven { url = uri("${rootDir}/../../../smkit_android/repo") }
+        // Sency Artifactory for already-published SMKit/SMBase releases.
+        maven { url = uri("https://artifacts.sency.ai/artifactory/release") }
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
