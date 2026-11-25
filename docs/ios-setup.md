@@ -1,6 +1,6 @@
 # iOS Setup
 
-This demo targets iOS 17.0+ with `@sency/react-native-smkit` 1.2.1, `SMKit` 1.9.5, and `SMBase` 1.9.5.
+This demo targets iOS 17.0+ with `@sency/react-native-smkit` 1.2.4, `SMKit` 2.7.3, and `SMBase` 2.7.3. The demo's own `ios/Podfile` already has everything below; these steps are for adding SMKit to your own app.
 
 1. Update *Podfile* in `iOS` folder:
 ```

@@ -1,3 +1,3 @@
 declare module '@env' {
-  export const API_PUBLIC_KEY: string;
+  export const SMKIT_UI_AUTH_KEY: string | undefined;
 }

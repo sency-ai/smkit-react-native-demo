@@ -1,11 +1,18 @@
 # SMKit React Native Demo
 
-React Native demo app for the published `@sency/react-native-smkit` 1.2.3 package. It exercises the public JS API on iOS and Android: configure, camera preview, start/stop session, detection events, position events, stop summaries, and exercise config overrides.
+React Native demo app for the published `@sency/react-native-smkit` 1.2.4 package. It exercises the public JS API on iOS and Android: configure, camera preview, the session lifecycle, detection and position events, phone and body calibration, guidance mode, exercise summaries, recovered sessions, and exercise config overrides.
 
 ## Features
 
 - Real-time camera preview and SMKit exercise detection
-- Rep counting, form score, feedback, and stop summaries
+- Session state driven by `onSessionStateChange` (starting, running, stopped with a reason)
+- Rep counting and form score for dynamic exercises, time in position for static holds (Plank)
+- Every active feedback item, not only the first one
+- Exercise summary screen built from `onDetectionStopped` (reps, perfect reps, time in position, technique score, top feedback)
+- Phone and body calibration before detection on iOS and Android
+- Optional guidance mode and guidance suggestions
+- Results recovered after a crash or native fault, shown on the next launch
+- Changing the exercise or the config overrides restarts the session so they apply
 - iOS skeleton overlay through JS position events
 - Android skeleton overlay through the native SMKit view path to reduce JS/UI latency
 - Sample `startSession(modifications)` overrides for Squat and Pushup
@@ -15,13 +22,10 @@ React Native demo app for the published `@sency/react-native-smkit` 1.2.3 packag
 
 - Node.js 18+
 - Yarn 3.6.4
-- Valid SMKit API key in `.env` as `API_PUBLIC_KEY=...`
+- A Sency SDK key in the git-ignored `AuthKey.local.properties` file (see [Configure the demo](#configure-the-demo))
 - iOS: macOS, Xcode, CocoaPods, iOS 17.0+ deployment target
 - Android: Android Studio/SDK, JDK 17, Android min SDK 24 (Android 7.0), Android Gradle Plugin 8.6+
-- Android SMKit Maven access through one of:
-  - local sibling `../smkit_android/repo`
-  - local Maven cache
-  - `https://artifacts.sency.ai/artifactory/release`
+- Android SMKit Maven access to `https://artifacts.sency.ai/artifactory/release`
 
 ## Install
 
@@ -32,7 +36,7 @@ yarn install
 The demo installs the published package directly from npm:
 
 ```sh
-yarn add @sency/react-native-smkit@1.2.3
+yarn add @sency/react-native-smkit@1.2.4
 ```
 
 For iOS:
@@ -43,8 +47,23 @@ pod install
 cd ..
 ```
 
-The bridge podspec is pinned to `SMKit` and `SMBase` 2.3.6. Run the pod command
-after those pods are available in the configured Sency CocoaPods source.
+The bridge podspec is pinned to `SMKit` and `SMBase` 2.7.3. Android resolves SMKit and SMBase 1.9.9 from Sency Artifactory.
+
+## Configure the demo
+
+Copy the template in the project root and paste your key into the copy:
+
+```bash
+cp AuthKey.local.properties.example AuthKey.local.properties
+```
+
+```properties
+SMKIT_UI_AUTH_KEY=your_sency_sdk_key_here
+```
+
+`AuthKey.local.properties` is git-ignored, so the key never shows up in `git status` or a commit. A `SMKIT_UI_AUTH_KEY` environment variable overrides the file (useful for CI). `react-native-dotenv` inlines the key at bundle time, and the app imports it as `SMKIT_UI_AUTH_KEY` from `@env`. This is the same file and variable name the Android demo (`smkit-ui-android-demo`) uses.
+
+After creating or changing the file, restart Metro with `--reset-cache` so the new value is picked up.
 
 ## Run
 
@@ -80,7 +99,7 @@ yarn ios
 - Android config passes `poseModelChoice: 'AdaptiveChoice'` so this demo follows the SDK adaptive model selection path.
 - The camera view uses `showNativeSkeletonOverlay` on Android. JS `onPositionData` is disabled for normal exercises to avoid SVG render lag and is enabled only for the boxing mini-game.
 - `positionDataFps` is capped at 15 and `detectionDataFps` at 8 for smoother JS updates.
-- Android props that are iOS-only in SDK 1.8.0 remain no-op/unsupported: wide-angle camera, camera type, 3D options, workout paused gesture region, and `recordExercise=false`.
+- iOS-only options (back camera, 3D options, workout paused gesture region, video analysis) are no-ops or report an error on Android. See the SDK README.
 
 ## iOS Notes
 
@@ -99,23 +118,24 @@ The Podfile must include the Sency CocoaPods source and iOS 17.0+ target. See `d
 import {
   SmkitCameraView,
   configure,
+  consumeRecoveredSessionSummaries,
   preloadModelsInBackground,
   type SmkitCameraViewRef,
 } from '@sency/react-native-smkit';
 import { Platform } from 'react-native';
 
 await configure(API_KEY, {
-  useBundledModelsOnColdStart: true,
   poseModelChoice: Platform.OS === 'android' ? 'AdaptiveChoice' : undefined,
 });
 preloadModelsInBackground();
+const recovered = await consumeRecoveredSessionSummaries();
 
 cameraRef.current?.startSession({
   SquatRegular: {
     DepthScore: { threshold: 0.75 },
   },
 });
-cameraRef.current?.startDetection('SquatRegular');
+cameraRef.current?.startDetection('SquatRegular', { guidanceMode: false });
 ```
 
 ```tsx
@@ -127,11 +147,14 @@ cameraRef.current?.startDetection('SquatRegular');
   showNativeSkeletonOverlay={Platform.OS === 'android'}
   positionDataFps={15}
   detectionDataFps={8}
+  onSessionStateChange={handleSessionState}
   onPreviewReady={setPreviewReady}
   onDetectionData={handleDetectionData}
   onDetectionStopped={handleDetectionStopped}
 />
 ```
+
+`startSession()` on a view that is already starting or running does nothing, so the demo calls `stopSession()` and waits for the `stopped` state before starting again with new modifications.
 
 ## Troubleshooting
 
@@ -151,11 +174,14 @@ kill <pid>
 
 Android cannot resolve SMKit artifacts:
 
-- Confirm `android/build.gradle` can see `../smkit_android/repo`, or
-- Configure access to `https://artifacts.sency.ai/artifactory/release`.
+- Confirm network access to `https://artifacts.sency.ai/artifactory/release`.
 
 Camera starts but detection feels delayed:
 
 - Keep Android `showNativeSkeletonOverlay` enabled.
 - Avoid subscribing to `onPositionData` unless the screen needs per-joint data.
 - Use `adb logcat | grep -E "SMKit|ReactNativeJS|RNSMKitDemoApp"` to inspect native and JS logs.
+
+## License
+
+See [LICENSE](LICENSE).

@@ -35,7 +35,8 @@ local.properties
 !debug.keystore
 .yarn
 
-# Secrets (same variable name as smkit-ui-flutter-demo)
+# Local SDK key (never commit)
+/AuthKey.local.properties
 .env
 
 # node.js
