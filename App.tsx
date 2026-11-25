@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -17,22 +17,28 @@ import {
 import {
   SmkitCameraView,
   configure,
+  consumeRecoveredSessionSummaries,
   preloadModelsInBackground,
   type BodyCalibrationStatusEvent,
   type ExerciseModifications,
   type ExerciseSummary,
+  type GuidanceSuggestionEvent,
   type JointData,
   type MovementFeedbackData,
   type PhoneCalibrationUpdate,
+  type RecoveredSessionSummary,
+  type SessionState,
+  type SessionStateEvent,
+  type SessionStopReason,
   type SmkitCameraViewRef,
 } from '@sency/react-native-smkit';
 import CameraWindow from './components/CameraWindow';
 import SkeletonOverlay from './components/SkeletonOverlay';
 import StatsPanel from './components/StatsPanel';
-import { API_PUBLIC_KEY } from '@env';
-import { Colors, Spacing, Typography } from './theme';
+import {SMKIT_UI_AUTH_KEY} from '@env';
+import {Colors, Spacing, Typography} from './theme';
 
-const API_KEY = API_PUBLIC_KEY ?? '';
+const API_KEY = SMKIT_UI_AUTH_KEY ?? '';
 const ANDROID_POSE_MODEL_CHOICE = 'AdaptiveChoice' as const;
 
 const EXERCISES = [
@@ -45,7 +51,7 @@ const EXERCISES = [
 ] as const;
 
 type ExerciseLabel = (typeof EXERCISES)[number];
-type BoxingTarget = { x: number; y: number };
+type BoxingTarget = {x: number; y: number};
 
 const BOXING_DURATION_SECONDS = 30;
 const BOXING_TARGET_SIZE = 68;
@@ -61,7 +67,7 @@ const EXERCISE_TYPE_MAP: Record<ExerciseLabel, string | null> = {
 };
 
 function createBoxingTarget(): BoxingTarget {
-  const { width, height } = Dimensions.get('window');
+  const {width, height} = Dimensions.get('window');
   const radius = BOXING_TARGET_SIZE / 2;
   const minX = radius + Spacing.lg;
   const maxX = width - radius - Spacing.lg;
@@ -75,10 +81,10 @@ function createBoxingTarget(): BoxingTarget {
 }
 
 function cameraPointToScreen(
-  point: { x: number; y: number },
-  cameraSize: { width: number; height: number } | null,
+  point: {x: number; y: number},
+  cameraSize: {width: number; height: number} | null,
 ): BoxingTarget {
-  const { width, height } = Dimensions.get('window');
+  const {width, height} = Dimensions.get('window');
   const cameraWidth = cameraSize?.width ?? 1080;
   const cameraHeight = cameraSize?.height ?? 1920;
   const cameraAspect = cameraWidth / cameraHeight;
@@ -106,7 +112,7 @@ function cameraPointToScreen(
 function getWristHitTarget(
   jointData: JointData,
   target: BoxingTarget,
-  cameraSize: { width: number; height: number } | null,
+  cameraSize: {width: number; height: number} | null,
 ): boolean {
   return ['LWrist', 'RWrist'].some(jointName => {
     const wrist = jointData[jointName];
@@ -115,7 +121,10 @@ function getWristHitTarget(
     }
 
     const wristPoint = cameraPointToScreen(wrist, cameraSize);
-    const distance = Math.hypot(wristPoint.x - target.x, wristPoint.y - target.y);
+    const distance = Math.hypot(
+      wristPoint.x - target.x,
+      wristPoint.y - target.y,
+    );
     return distance <= BOXING_HIT_RADIUS;
   });
 }
@@ -140,7 +149,7 @@ function sampleModificationsForSelectedExercise(
   if (native === 'SquatRegular') {
     return {
       SquatRegular: {
-        DepthScore: { threshold: 0.75 },
+        DepthScore: {threshold: 0.75},
       },
     };
   }
@@ -164,7 +173,6 @@ const isStaticExercise = (exerciseName: ExerciseLabel): boolean => {
   return nativeType.includes('Static');
 };
 
-
 interface AppState {
   isConfiguring: boolean;
   didConfig: boolean;
@@ -174,7 +182,7 @@ interface AppState {
   sessionStarted: boolean;
   nativeViewReady: boolean;
   previewReady: boolean;
-  cameraVideoSize: { width: number; height: number } | null;
+  cameraVideoSize: {width: number; height: number} | null;
   isDetecting: boolean;
   isInPosition: boolean;
   repCount: number;
@@ -194,6 +202,44 @@ interface AppState {
   boxingTarget: BoxingTarget | null;
   boxingTimeLeft: number;
   boxingActive: boolean;
+  /** Native session lifecycle from `onSessionStateChange`. */
+  sessionState: SessionState | 'idle';
+  sessionStopReason: SessionStopReason | null;
+  /** Every active feedback item from the latest detection frame. */
+  feedbackItems: string[];
+  /** Seconds in position for static holds such as Plank. */
+  holdSeconds: number;
+  /** Summary from the last `onDetectionStopped`, shown until dismissed. */
+  lastSummary: ExerciseSummary | null;
+  /** Results the SDK saved after a crash or native fault. */
+  recoveredSummaries: RecoveredSessionSummary[];
+  useGuidanceMode: boolean;
+  /** Current guidance instruction while guidance mode is active. */
+  guidanceText: string | null;
+  guidanceSuggestion: string | null;
+}
+
+function topFeedback(summary: ExerciseSummary, count = 3): string[] {
+  return Object.entries(summary.feedbacks ?? {})
+    .filter(([, occurrences]) => occurrences > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(([name, occurrences]) => `${name} ×${occurrences}`);
+}
+
+function describeStop(event: SessionStateEvent): string | null {
+  switch (event.reason) {
+    case 'fault':
+      return `The SMKit session stopped after a native fault${
+        event.faultCode ? ` (${event.faultCode})` : ''
+      }. Tap Restart Session to try again.`;
+    case 'startFailed':
+      return 'The SMKit session failed to start. Tap Restart Session to try again.';
+    case 'reconfigure':
+      return 'SMKit was reconfigured, so the session stopped. Tap Restart Session.';
+    default:
+      return null;
+  }
 }
 
 export default function App() {
@@ -232,6 +278,15 @@ export default function App() {
     boxingTarget: null,
     boxingTimeLeft: BOXING_DURATION_SECONDS,
     boxingActive: false,
+    sessionState: 'idle',
+    sessionStopReason: null,
+    feedbackItems: [],
+    holdSeconds: 0,
+    lastSummary: null,
+    recoveredSummaries: [],
+    useGuidanceMode: false,
+    guidanceText: null,
+    guidanceSuggestion: null,
   });
 
   useEffect(() => {
@@ -242,22 +297,28 @@ export default function App() {
             ...prev,
             isConfiguring: false,
             configError:
-              'Set API_PUBLIC_KEY in a root `.env` file (see `.env.example`).',
+              'Set SMKIT_UI_AUTH_KEY in AuthKey.local.properties (copy AuthKey.local.properties.example).',
           }));
           return;
         }
 
-        await configure(API_KEY, {
-          useBundledModelsOnColdStart: true,
-          ...(Platform.OS === 'android'
-            ? { poseModelChoice: ANDROID_POSE_MODEL_CHOICE }
-            : {}),
-        });
+        await configure(
+          API_KEY,
+          Platform.OS === 'android'
+            ? {poseModelChoice: ANDROID_POSE_MODEL_CHOICE}
+            : undefined,
+        );
         preloadModelsInBackground();
+        // Results the SDK saved when a previous session was cut off by a crash or fault.
+        const recoveredSummaries =
+          await consumeRecoveredSessionSummaries().catch(
+            () => [] as RecoveredSessionSummary[],
+          );
         setState(prev => ({
           ...prev,
           isConfiguring: false,
           didConfig: true,
+          recoveredSummaries,
         }));
       } catch (e) {
         setState(prev => ({
@@ -278,6 +339,10 @@ export default function App() {
         setState(prev => ({
           ...prev,
           elapsedTime: prev.elapsedTime + 1,
+          holdSeconds:
+            prev.isInPosition && isStaticExercise(prev.selectedExercise)
+              ? prev.holdSeconds + 1
+              : prev.holdSeconds,
           boxingTimeLeft:
             prev.boxingActive && prev.selectedExercise === 'boxing'
               ? Math.max(0, prev.boxingTimeLeft - 1)
@@ -383,7 +448,38 @@ export default function App() {
       sessionStarted: true,
       phoneCalibrationReady: false,
       bodyInFrameForCalibration: false,
+      sessionState: 'idle',
+      sessionStopReason: null,
+      lastSummary: null,
+      holdSeconds: 0,
+      guidanceText: null,
+      guidanceSuggestion: null,
     }));
+  };
+
+  /** Starts the native session with the modifications chosen on the setup screen. */
+  const startNativeSession = () => {
+    const mods = state.applyExerciseModifications
+      ? sampleModificationsForSelectedExercise(state.selectedExercise)
+      : null;
+    cameraRef.current?.startSession?.(mods);
+  };
+
+  /** After a fault or failed start, start a fresh session on the same camera view. */
+  const restartSession = () => {
+    previewCalibrationsStartedRef.current = false;
+    directDetectionStartedRef.current = false;
+    calibrationCompleteRef.current = false;
+    setState(prev => ({
+      ...prev,
+      error: null,
+      previewReady: false,
+      isDetecting: false,
+      sessionStopReason: null,
+      phoneCalibrationReady: false,
+      bodyInFrameForCalibration: false,
+    }));
+    startNativeSession();
   };
 
   const handleCameraLayout = () => {
@@ -431,42 +527,36 @@ export default function App() {
       isDetecting: true,
       boxingActive: false,
       boxingTarget: null,
+      lastSummary: null,
+      guidanceText: null,
+      guidanceSuggestion: null,
     }));
     const nativeExerciseType = EXERCISE_TYPE_MAP[state.selectedExercise];
     if (nativeExerciseType) {
-      cameraRef.current?.startDetection?.(nativeExerciseType);
+      cameraRef.current?.startDetection?.(nativeExerciseType, {
+        guidanceMode: state.useGuidanceMode,
+        // Without guidance mode, let the SDK suggest it when the user struggles.
+        guidanceSuggestionEnabled: !state.useGuidanceMode,
+      });
     }
   };
 
+  // Start the native session once per camera mount. The exercise and modifications can
+  // only change on the setup screen, which unmounts the camera view (that stops the
+  // session), so a running session never needs a second startSession() here.
   useEffect(() => {
     if (!state.sessionStarted || !state.nativeViewReady) {
       return;
     }
-    const mods = state.applyExerciseModifications
-      ? sampleModificationsForSelectedExercise(state.selectedExercise)
-      : null;
-    try {
-      cameraRef.current?.startSession?.(mods);
-    } catch (e) {
-      setState(prev => ({
-        ...prev,
-        error: `Failed to start session: ${String(e)}`,
-      }));
-    }
-  }, [
-    state.sessionStarted,
-    state.nativeViewReady,
-    state.applyExerciseModifications,
-    state.selectedExercise,
-  ]);
+    startNativeSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- start once per mount
+  }, [state.sessionStarted, state.nativeViewReady]);
 
   useEffect(() => {
     if (!state.sessionStarted || !state.previewReady) {
       return;
     }
-    const calibrateNative =
-      Platform.OS === 'ios' && state.calibrateBeforeDetection;
-    if (calibrateNative) {
+    if (state.calibrateBeforeDetection) {
       if (previewCalibrationsStartedRef.current) {
         return;
       }
@@ -502,7 +592,7 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (Platform.OS !== 'ios' || !state.calibrateBeforeDetection) {
+    if (!state.calibrateBeforeDetection) {
       return;
     }
     if (!state.sessionStarted || !state.previewReady) {
@@ -533,12 +623,17 @@ export default function App() {
       triggerRepAnimation();
     }
 
-    const feedbackText = data.feedback?.[0] || '';
+    const feedbackItems = (data.feedback ?? []).filter(Boolean);
+    const guidanceText = data.isGuidanceModeActive
+      ? data.coachInstruction || data.guidanceStep || null
+      : null;
 
     setState(prev => {
       const next: AppState = {
         ...prev,
-        feedback: feedbackText,
+        feedback: feedbackItems.join(' · '),
+        feedbackItems,
+        guidanceText,
         isInPosition: data.isInPosition,
         isShallowRep: data.isShallowRep,
         formScore: Math.round(data.techniqueScore || 0),
@@ -600,14 +695,44 @@ export default function App() {
     });
   };
 
-  const handleDetectionStopped = (_summary: ExerciseSummary) => {
+  const handleDetectionStopped = (summary: ExerciseSummary) => {
     setState(prev => ({
       ...prev,
       isDetecting: false,
+      lastSummary: summary,
     }));
   };
 
-  const handlePreviewReady = (videoSize?: { width: number; height: number }) => {
+  const handleSessionStateChange = (event: SessionStateEvent) => {
+    setState(prev => {
+      const next: AppState = {
+        ...prev,
+        sessionState: event.state,
+        sessionStopReason: event.reason ?? null,
+      };
+      if (event.state === 'stopped') {
+        // The camera is gone; nothing is detecting any more, whatever stopped it.
+        next.isDetecting = false;
+        next.boxingActive = false;
+        next.boxingTarget = null;
+        next.previewReady = false;
+        const message = describeStop(event);
+        if (message) {
+          next.error = message;
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleGuidanceSuggestion = (event: GuidanceSuggestionEvent) => {
+    setState(prev => ({
+      ...prev,
+      guidanceSuggestion: `Guidance mode is available for ${event.exerciseName}. Turn it on in setup for step-by-step coaching.`,
+    }));
+  };
+
+  const handlePreviewReady = (videoSize?: {width: number; height: number}) => {
     setState(prev => ({
       ...prev,
       previewReady: true,
@@ -625,16 +750,16 @@ export default function App() {
 
   const handlePhoneCalibrationUpdate = (e: PhoneCalibrationUpdate) => {
     if (e.isReady) {
-      setState(prev => ({ ...prev, phoneCalibrationReady: true }));
+      setState(prev => ({...prev, phoneCalibrationReady: true}));
     }
   };
 
   const handleBodyCalibrationStatus = (ev: BodyCalibrationStatusEvent) => {
     if (ev.status === 'didEnterFrame') {
-      setState(prev => ({ ...prev, bodyInFrameForCalibration: true }));
+      setState(prev => ({...prev, bodyInFrameForCalibration: true}));
     }
     if (ev.status === 'didLeaveFrame') {
-      setState(prev => ({ ...prev, bodyInFrameForCalibration: false }));
+      setState(prev => ({...prev, bodyInFrameForCalibration: false}));
     }
   };
 
@@ -652,6 +777,9 @@ export default function App() {
     stopDetection();
     setState(prev => ({
       ...prev,
+      holdSeconds: 0,
+      feedbackItems: [],
+      lastSummary: null,
       repCount: 0,
       isShallowRep: false,
       lastRepSummaryLabel: null,
@@ -674,6 +802,13 @@ export default function App() {
     setState(prev => ({
       ...prev,
       sessionStarted: false,
+      sessionState: 'idle',
+      sessionStopReason: null,
+      holdSeconds: 0,
+      feedbackItems: [],
+      lastSummary: null,
+      guidanceText: null,
+      guidanceSuggestion: null,
       nativeViewReady: false,
       previewReady: false,
       cameraVideoSize: null,
@@ -700,6 +835,13 @@ export default function App() {
       ...prev,
       didConfig: false,
       sessionStarted: false,
+      sessionState: 'idle',
+      sessionStopReason: null,
+      holdSeconds: 0,
+      feedbackItems: [],
+      lastSummary: null,
+      guidanceText: null,
+      guidanceSuggestion: null,
       nativeViewReady: false,
       previewReady: false,
       isDetecting: false,
@@ -729,7 +871,7 @@ export default function App() {
       <SafeAreaView style={styles.setupContainer}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={[styles.setupTitle, { marginTop: Spacing.lg }]}>
+          <Text style={[styles.setupTitle, {marginTop: Spacing.lg}]}>
             Initializing SMKit...
           </Text>
         </View>
@@ -744,7 +886,7 @@ export default function App() {
           <View style={styles.errorBanner}>
             <Text style={styles.errorBannerText}>{state.configError}</Text>
           </View>
-          <Text style={[styles.setupSubtitle, { marginTop: Spacing.lg }]}>
+          <Text style={[styles.setupSubtitle, {marginTop: Spacing.lg}]}>
             Update your API key in App.tsx
           </Text>
         </View>
@@ -757,7 +899,7 @@ export default function App() {
       <SafeAreaView style={styles.setupContainer}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={[styles.setupTitle, { marginTop: Spacing.lg }]}>
+          <Text style={[styles.setupTitle, {marginTop: Spacing.lg}]}>
             Initializing...
           </Text>
         </View>
@@ -773,6 +915,38 @@ export default function App() {
           <Text style={styles.setupSubtitle}>Select your workout</Text>
 
           <View style={styles.setupForm}>
+            {state.recoveredSummaries.length > 0 ? (
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryTitle}>Recovered results</Text>
+                <Text style={styles.hint}>
+                  SMKit saved these after a previous session was cut off.
+                </Text>
+                {state.recoveredSummaries.map(item => {
+                  const exercises = Array.isArray(item.sessionResult?.exercises)
+                    ? (item.sessionResult?.exercises as unknown[]).length
+                    : 0;
+                  return (
+                    <Text
+                      key={`${item.recoveredAt}-${item.faultCode}`}
+                      style={styles.summaryLine}>
+                      {new Date(item.recoveredAt).toLocaleString()} ·{' '}
+                      {exercises} exercise{exercises === 1 ? '' : 's'} ·{' '}
+                      {item.recoveredAfterRelaunch
+                        ? 'after relaunch'
+                        : item.faultCode}
+                    </Text>
+                  );
+                })}
+                <Pressable
+                  style={styles.secondaryButton}
+                  onPress={() =>
+                    setState(prev => ({...prev, recoveredSummaries: []}))
+                  }>
+                  <Text style={styles.secondaryButtonText}>Dismiss</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Exercise</Text>
               <View style={styles.exerciseGrid}>
@@ -790,14 +964,12 @@ export default function App() {
                           ...prev,
                           selectedExercise: item,
                         }))
-                      }
-                    >
+                      }>
                       <Text
                         style={[
                           styles.exerciseButtonText,
                           isSelected && styles.exerciseButtonTextSelected,
-                        ]}
-                      >
+                        ]}>
                         {item}
                       </Text>
                     </Pressable>
@@ -810,11 +982,13 @@ export default function App() {
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Camera</Text>
                 <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>Wide angle (supported devices)</Text>
+                  <Text style={styles.switchLabel}>
+                    Wide angle (supported devices)
+                  </Text>
                   <Switch
                     value={state.useWideAngleCamera}
                     onValueChange={v =>
-                      setState(prev => ({ ...prev, useWideAngleCamera: v }))
+                      setState(prev => ({...prev, useWideAngleCamera: v}))
                     }
                   />
                 </View>
@@ -831,30 +1005,50 @@ export default function App() {
                   <Switch
                     value={state.countOnlyPerfectPushups}
                     onValueChange={v =>
-                      setState(prev => ({ ...prev, countOnlyPerfectPushups: v }))
+                      setState(prev => ({...prev, countOnlyPerfectPushups: v}))
                     }
                   />
                 </View>
                 <Text style={styles.hint}>
-                  Uses isShallowRep and PushupKneesOnFloor (feedback_keys) on rep completion.
+                  Uses isShallowRep and PushupKneesOnFloor (feedback_keys) on
+                  rep completion.
                 </Text>
               </View>
             ) : null}
 
-            {Platform.OS === 'ios' ? (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Calibration</Text>
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>
+                  Phone + body calibration before detection
+                </Text>
+                <Switch
+                  value={state.calibrateBeforeDetection}
+                  onValueChange={v =>
+                    setState(prev => ({...prev, calibrateBeforeDetection: v}))
+                  }
+                />
+              </View>
+            </View>
+
+            {state.selectedExercise !== 'boxing' ? (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Calibration</Text>
+                <Text style={styles.label}>Guidance</Text>
                 <View style={styles.switchRow}>
                   <Text style={styles.switchLabel}>
-                    Phone + body calibration before detection
+                    Guidance mode (step-by-step coaching)
                   </Text>
                   <Switch
-                    value={state.calibrateBeforeDetection}
+                    value={state.useGuidanceMode}
                     onValueChange={v =>
-                      setState(prev => ({ ...prev, calibrateBeforeDetection: v }))
+                      setState(prev => ({...prev, useGuidanceMode: v}))
                     }
                   />
                 </View>
+                <Text style={styles.hint}>
+                  When off, SMKit may suggest guidance if the exercise is hard
+                  to get into.
+                </Text>
               </View>
             ) : null}
 
@@ -867,13 +1061,13 @@ export default function App() {
                 <Switch
                   value={state.applyExerciseModifications}
                   onValueChange={v =>
-                    setState(prev => ({ ...prev, applyExerciseModifications: v }))
+                    setState(prev => ({...prev, applyExerciseModifications: v}))
                   }
                 />
               </View>
               <Text style={styles.hint}>
-                Loosen pushup depth: raise normalized high in App.tsx sample (keep high_start
-                under ~0.88).
+                Loosen pushup depth: raise normalized high in App.tsx sample
+                (keep high_start under ~0.88).
               </Text>
             </View>
 
@@ -885,11 +1079,13 @@ export default function App() {
                 placeholderTextColor={Colors.textTertiary}
                 value={state.userHeight}
                 onChangeText={text =>
-                  setState(prev => ({ ...prev, userHeight: text }))
+                  setState(prev => ({...prev, userHeight: text}))
                 }
                 keyboardType="numeric"
               />
-              <Text style={styles.hint}>Used for more accurate form scoring.</Text>
+              <Text style={styles.hint}>
+                Used for more accurate form scoring.
+              </Text>
             </View>
 
             {state.error ? (
@@ -898,12 +1094,18 @@ export default function App() {
               </View>
             ) : null}
 
-            <Pressable style={styles.primaryButton} onPress={startSessionAndPreview}>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={startSessionAndPreview}>
               <Text style={styles.primaryButtonText}>Start Session</Text>
             </Pressable>
 
-            <Pressable style={styles.secondaryButton} onPress={resetToConfiguration}>
-              <Text style={styles.secondaryButtonText}>Back to Configuration</Text>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={resetToConfiguration}>
+              <Text style={styles.secondaryButtonText}>
+                Back to Configuration
+              </Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -920,7 +1122,6 @@ export default function App() {
           exercise={state.selectedExercise}
           phonePosition="Floor"
           userHeight={parseFloat(state.userHeight) || 175}
-          useBundledModelsOnColdStart={true}
           useWideAngleCamera={state.useWideAngleCamera}
           enablePhoneMovementCountPrevention={true}
           positionDataFps={15}
@@ -936,6 +1137,8 @@ export default function App() {
           onError={handleError}
           onPreviewReady={handlePreviewReady}
           onDetectionStopped={handleDetectionStopped}
+          onSessionStateChange={handleSessionStateChange}
+          onGuidanceSuggestion={handleGuidanceSuggestion}
           onPhoneCalibrationUpdate={handlePhoneCalibrationUpdate}
           onBodyCalibrationStatus={handleBodyCalibrationStatus}
           onLayout={handleCameraLayout}
@@ -969,7 +1172,7 @@ export default function App() {
         (!isStaticExercise(state.selectedExercise) ||
           state.selectedExercise === 'boxing') ? (
           <View style={styles.repCounterOverlay}>
-            <Animated.View style={{ transform: [{ scale: repCountAnim }] }}>
+            <Animated.View style={{transform: [{scale: repCountAnim}]}}>
               <Text style={styles.repCounterLabel}>
                 {state.selectedExercise === 'boxing' ? 'HITS' : 'REPS'}
               </Text>
@@ -987,7 +1190,28 @@ export default function App() {
           </View>
         ) : null}
 
-        {state.isDetecting && state.selectedExercise !== 'boxing' ? (
+        {state.isDetecting && isStaticExercise(state.selectedExercise) ? (
+          <View style={styles.repCounterOverlay}>
+            <Text style={styles.repCounterLabel}>HOLD</Text>
+            <Text style={styles.repCounterValue}>
+              {formatTime(state.holdSeconds)}
+            </Text>
+            <Text style={styles.repCounterPerfectHint}>time in position</Text>
+          </View>
+        ) : null}
+
+        {state.isDetecting &&
+        (state.guidanceText || state.guidanceSuggestion) ? (
+          <View style={styles.guidanceBanner}>
+            <Text style={styles.guidanceBannerText}>
+              {state.guidanceText ?? state.guidanceSuggestion}
+            </Text>
+          </View>
+        ) : null}
+
+        {state.isDetecting &&
+        state.selectedExercise !== 'boxing' &&
+        !isStaticExercise(state.selectedExercise) ? (
           <View
             style={[
               styles.depthBanner,
@@ -996,14 +1220,17 @@ export default function App() {
                   ? 'rgba(234, 179, 8, 0.92)'
                   : 'rgba(22, 163, 74, 0.88)',
               },
-            ]}
-          >
+            ]}>
             <Text style={styles.depthBannerTitle}>Rep depth</Text>
             <Text style={styles.depthBannerLine}>
-              {state.isShallowRep ? 'Shallow (this rep)' : 'Full depth (this rep)'}
+              {state.isShallowRep
+                ? 'Shallow (this rep)'
+                : 'Full depth (this rep)'}
             </Text>
             {state.lastRepSummaryLabel != null ? (
-              <Text style={styles.depthBannerLast}>{state.lastRepSummaryLabel}</Text>
+              <Text style={styles.depthBannerLast}>
+                {state.lastRepSummaryLabel}
+              </Text>
             ) : null}
           </View>
         ) : null}
@@ -1026,16 +1253,14 @@ export default function App() {
                   ? '#22c55e'
                   : 'rgba(255, 0, 0, 0.6)',
               },
-            ]}
-          >
+            ]}>
             <Text style={styles.positionIndicatorLabel}>
               {state.isInPosition ? 'IN POSITION' : 'OUT OF POSITION'}
             </Text>
           </View>
         ) : null}
 
-        {Platform.OS === 'ios' &&
-        state.calibrateBeforeDetection &&
+        {state.calibrateBeforeDetection &&
         state.previewReady &&
         !state.isDetecting ? (
           <View style={styles.calibrationOverlay}>
@@ -1044,15 +1269,79 @@ export default function App() {
               Phone angle: {state.phoneCalibrationReady ? 'OK' : 'Adjust tilt'}
             </Text>
             <Text style={styles.calibrationLine}>
-              Body in frame: {state.bodyInFrameForCalibration ? 'OK' : 'Step in view'}
+              Body in frame:{' '}
+              {state.bodyInFrameForCalibration ? 'OK' : 'Step in view'}
             </Text>
           </View>
         ) : null}
 
-        {!state.previewReady ? (
+        {!state.previewReady && state.sessionState !== 'stopped' ? (
           <View style={styles.previewOverlay}>
             <ActivityIndicator color={Colors.primary} />
-            <Text style={styles.previewText}>Starting camera...</Text>
+            <Text style={styles.previewText}>
+              {state.sessionState === 'running'
+                ? 'Waiting for camera...'
+                : 'Starting session...'}
+            </Text>
+          </View>
+        ) : null}
+
+        {state.sessionState === 'stopped' ? (
+          <View style={styles.previewOverlay}>
+            <Text style={styles.previewText}>Session stopped</Text>
+            <Pressable style={styles.primaryButton} onPress={restartSession}>
+              <Text style={styles.primaryButtonText}>Restart Session</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {state.lastSummary && !state.isDetecting ? (
+          <View style={styles.summaryOverlay}>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>
+                {state.lastSummary.exerciseName || state.selectedExercise}{' '}
+                summary
+              </Text>
+              {state.lastSummary.repsPerformed != null ? (
+                <Text style={styles.summaryLine}>
+                  Reps: {state.lastSummary.repsPerformed}
+                  {state.lastSummary.repsPerformedPerfect != null
+                    ? ` (${state.lastSummary.repsPerformedPerfect} perfect)`
+                    : ''}
+                </Text>
+              ) : null}
+              {state.lastSummary.timeInPosition != null ? (
+                <Text style={styles.summaryLine}>
+                  Time in position:{' '}
+                  {Math.round(state.lastSummary.timeInPosition)}s
+                  {state.lastSummary.timeInPositionPerfect != null
+                    ? ` (${Math.round(
+                        state.lastSummary.timeInPositionPerfect,
+                      )}s perfect)`
+                    : ''}
+                </Text>
+              ) : null}
+              <Text style={styles.summaryLine}>
+                Technique score:{' '}
+                {Math.round(state.lastSummary.techniqueScore ?? 0)}
+              </Text>
+              <Text style={styles.summaryLine}>
+                Duration:{' '}
+                {formatTime(Math.round(state.lastSummary.totalTime ?? 0))}
+              </Text>
+              {topFeedback(state.lastSummary).length > 0 ? (
+                <Text style={styles.summaryLine}>
+                  Top feedback: {topFeedback(state.lastSummary).join(', ')}
+                </Text>
+              ) : null}
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() =>
+                  setState(prev => ({...prev, lastSummary: null}))
+                }>
+                <Text style={styles.secondaryButtonText}>Close</Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
       </CameraWindow>
@@ -1060,8 +1349,18 @@ export default function App() {
       <SafeAreaView style={styles.overlayContainer}>
         <View style={styles.statsPanelOverlay}>
           <StatsPanel
-            repCount={state.repCount}
-            countLabel={state.selectedExercise === 'boxing' ? 'HITS' : 'REPS'}
+            repCount={
+              isStaticExercise(state.selectedExercise)
+                ? state.holdSeconds
+                : state.repCount
+            }
+            countLabel={
+              state.selectedExercise === 'boxing'
+                ? 'HITS'
+                : isStaticExercise(state.selectedExercise)
+                ? 'HOLD (S)'
+                : 'REPS'
+            }
             time={
               state.selectedExercise === 'boxing'
                 ? formatTime(state.boxingTimeLeft)
@@ -1083,11 +1382,19 @@ export default function App() {
         <View style={styles.controlsOverlay}>
           <View style={styles.controlsContainer}>
             {state.isDetecting ? (
-              <Pressable style={styles.primaryButtonDanger} onPress={stopDetection}>
-                <Text style={styles.primaryButtonText}>Pause Detection</Text>
+              <Pressable
+                style={styles.primaryButtonDanger}
+                onPress={stopDetection}>
+                <Text style={styles.primaryButtonText}>Stop Detection</Text>
               </Pressable>
             ) : (
-              <Pressable style={styles.primaryButton} onPress={startDetectionSession}>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  state.sessionState !== 'running' && styles.buttonDisabled,
+                ]}
+                disabled={state.sessionState !== 'running'}
+                onPress={startDetectionSession}>
                 <Text style={styles.primaryButtonText}>
                   {state.selectedExercise === 'boxing'
                     ? 'Start Boxing'
@@ -1100,7 +1407,9 @@ export default function App() {
               <Pressable style={styles.secondaryButton} onPress={resetSession}>
                 <Text style={styles.secondaryButtonText}>Reset Stats</Text>
               </Pressable>
-              <Pressable style={styles.secondaryButton} onPress={resetToExerciseSetup}>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={resetToExerciseSetup}>
                 <Text style={styles.secondaryButtonText}>Change Exercise</Text>
               </Pressable>
             </View>
@@ -1347,7 +1656,7 @@ const styles = StyleSheet.create({
     shadowColor: '#fb923c',
     shadowOpacity: 0.7,
     shadowRadius: 14,
-    shadowOffset: { width: 0, height: 0 },
+    shadowOffset: {width: 0, height: 0},
     elevation: 12,
     pointerEvents: 'none',
   },
@@ -1441,5 +1750,53 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
     letterSpacing: 0.5,
+  },
+  buttonDisabled: {
+    opacity: 0.4,
+  },
+  guidanceBanner: {
+    position: 'absolute',
+    top: '18%',
+    left: 24,
+    right: 24,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(34, 211, 238, 0.9)',
+    pointerEvents: 'none',
+  },
+  guidanceBannerText: {
+    color: '#0b1220',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  summaryOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  summaryCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: Spacing.lg,
+    backgroundColor: 'rgba(11, 18, 32, 0.95)',
+    borderWidth: 1,
+    borderColor: Colors.borderGlass,
+  },
+  summaryTitle: {
+    color: Colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  summaryLine: {
+    color: Colors.textSecondary,
+    fontSize: 15,
+    marginBottom: 6,
   },
 });

@@ -1,16 +1,6 @@
 import React from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ViewStyle,
-} from 'react-native';
-import {
-  Colors,
-  Spacing,
-  Typography,
-  BorderRadius,
-} from '../theme';
+import {StyleSheet, View, Text, ViewStyle} from 'react-native';
+import {Colors, Spacing, Typography, BorderRadius} from '../theme';
 
 interface StatsCardProps {
   label: string;
@@ -36,7 +26,7 @@ const StatsCard: React.FC<StatsCardProps> = ({
 }) => {
   return (
     <View style={[styles.card, style]}>
-      <Text style={[styles.value, { color }]}>{value}</Text>
+      <Text style={[styles.value, {color}]}>{value}</Text>
       <Text style={styles.label}>{label}</Text>
     </View>
   );
@@ -51,17 +41,36 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
   style,
 }) => {
   const getFormColor = (score: number) => {
-    if (score >= 80) return Colors.primary;
-    if (score >= 60) return Colors.warning;
+    if (score >= 80) {
+      return Colors.primary;
+    }
+    if (score >= 60) {
+      return Colors.warning;
+    }
     return Colors.error;
   };
 
   return (
     <View style={[styles.container, style]}>
       <View style={styles.cardsRow}>
-        <StatsCard label={countLabel} value={repCount} color={Colors.primary} style={styles.card} />
-        <StatsCard label="TIME" value={time} color={Colors.secondary} style={styles.card} />
-        <StatsCard label="FORM" value={`${formScore}%`} color={getFormColor(formScore)} style={styles.card} />
+        <StatsCard
+          label={countLabel}
+          value={repCount}
+          color={Colors.primary}
+          style={styles.card}
+        />
+        <StatsCard
+          label="TIME"
+          value={time}
+          color={Colors.secondary}
+          style={styles.card}
+        />
+        <StatsCard
+          label="FORM"
+          value={`${formScore}%`}
+          color={getFormColor(formScore)}
+          style={styles.card}
+        />
       </View>
 
       {feedback ? (

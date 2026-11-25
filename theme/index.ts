@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import {Platform} from 'react-native';
 
 export const Colors = {
   background: '#0b1220',
@@ -66,7 +66,7 @@ export const Shadows = {
       shadowColor: '#000',
       shadowOpacity: 0.25,
       shadowRadius: 12,
-      shadowOffset: { width: 0, height: 6 },
+      shadowOffset: {width: 0, height: 6},
     },
     android: {
       elevation: 8,

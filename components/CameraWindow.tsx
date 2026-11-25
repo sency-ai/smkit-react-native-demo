@@ -1,18 +1,6 @@
 import React from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ViewStyle,
-  Dimensions,
-} from 'react-native';
-import {
-  Colors,
-  Spacing,
-  BorderRadius,
-  Shadows,
-  Typography,
-} from '../theme';
+import {StyleSheet, View, Text, ViewStyle, Dimensions} from 'react-native';
+import {Colors, Spacing, BorderRadius, Shadows, Typography} from '../theme';
 
 interface CameraWindowProps {
   children: React.ReactNode;
@@ -119,5 +107,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export { CAMERA_WIDTH, CAMERA_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT };
+export {CAMERA_WIDTH, CAMERA_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT};
 export default CameraWindow;

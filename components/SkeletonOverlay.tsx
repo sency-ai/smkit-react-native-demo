@@ -1,7 +1,7 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import Svg, { Line, Circle } from 'react-native-svg';
-import type { JointData } from '@sency/react-native-smkit';
+import {StyleSheet, View} from 'react-native';
+import Svg, {Line, Circle} from 'react-native-svg';
+import type {JointData} from '@sency/react-native-smkit';
 
 interface SkeletonOverlayProps {
   jointData: JointData | null;
@@ -18,34 +18,34 @@ const SKELETON_CONNECTIONS = [
   ['Nose', 'Neck'],
   ['Neck', 'RShoulder'],
   ['Neck', 'LShoulder'],
-  
+
   // Right arm
   ['RShoulder', 'RElbow'],
   ['RElbow', 'RWrist'],
-  
+
   // Left arm
   ['LShoulder', 'LElbow'],
   ['LElbow', 'LWrist'],
-  
+
   // Torso (using Hip as center)
   ['Neck', 'Hip'],
   ['Hip', 'RHip'],
   ['Hip', 'LHip'],
   ['RShoulder', 'RHip'],
   ['LShoulder', 'LHip'],
-  
+
   // Right leg
   ['RHip', 'RKnee'],
   ['RKnee', 'RAnkle'],
   ['RAnkle', 'RHeel'],
   ['RHeel', 'RBigToe'],
-  
+
   // Left leg
   ['LHip', 'LKnee'],
   ['LKnee', 'LAnkle'],
   ['LAnkle', 'LHeel'],
   ['LHeel', 'LBigToe'],
-  
+
   // Face (optional)
   ['Nose', 'REye'],
   ['Nose', 'LEye'],
@@ -61,7 +61,9 @@ const SkeletonOverlay: React.FC<SkeletonOverlayProps> = ({
   cameraHeight = 1920,
   mirrored = false,
 }) => {
-  if (!jointData) return null;
+  if (!jointData) {
+    return null;
+  }
 
   const confidenceThreshold = 0.3;
 
@@ -92,7 +94,7 @@ const SkeletonOverlay: React.FC<SkeletonOverlayProps> = ({
       ? offsetX + ((cameraWidth - x) / cameraWidth) * videoWidth
       : offsetX + (x / cameraWidth) * videoWidth;
     const scaledY = offsetY + (y / cameraHeight) * videoHeight;
-    return { x: scaledX, y: scaledY };
+    return {x: scaledX, y: scaledY};
   };
 
   return (

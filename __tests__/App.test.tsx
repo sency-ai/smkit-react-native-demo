@@ -29,7 +29,7 @@ it('renders correctly', async () => {
     tree = renderer.create(<App />);
   });
   await act(async () => {
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>(resolve => setImmediate(resolve));
   });
   await act(() => {
     tree.unmount();
